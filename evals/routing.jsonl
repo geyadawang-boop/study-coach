@@ -42,3 +42,5 @@
 {"id":"RT-42","input":"追问稿只给了一种推导，够不够深","expect":"scripts/explain_lint.py"}
 {"id":"RT-43","input":"这题除了通法还有没有更优解，去B站搜一下","expect":"references/solution-research.md"}
 {"id":"RT-44","input":"能不能同时给我常规解法和两种巧解","expect":"references/solution-research.md"}
+{"id":"RT-45","input":"跑一下 web_search 检索脚本，用域名过滤只搜学术站点","expect":"scripts/web_search.py"}
+{"id":"RT-46","input":"检索脚本遇到反爬或者超时怎么处理","expect":"scripts/web_search.py"}

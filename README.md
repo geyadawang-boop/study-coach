@@ -2,7 +2,7 @@
 
 > 一个可以直接加载进 Agent 的备考 Skill：把教材、考纲、真题变成一条可恢复的「诊断—讲—例—练—测—复习」流水线。
 
-![checks](https://img.shields.io/badge/checks-27%2F27-brightgreen)
+![checks](https://img.shields.io/badge/checks-29%2F29-brightgreen)
 ![python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![deps](https://img.shields.io/badge/core%20deps-stdlib--only-lightgrey)
 
@@ -95,6 +95,17 @@ flowchart LR
 
 替代解法最多两种，每种都要能复现、能验算、有失效条件；来源给 URL + 访问日期，没联网就写「未外部检索」。多解稿跑 `explain_lint.py --level multi`，缺常规解法、对比表、验算或来源都会退出 1。协议见 [references/solution-research.md](references/solution-research.md)。
 
+外部检索用自带的零 key 脚本，不依赖宿主是否开放搜索工具：
+
+```bash
+python scripts/web_search.py "tanx-sinx/x^3 一题多解" \
+  --include-domains bilibili.com,math.stackexchange.com,arxiv.org \
+  --preferred-domains math.stackexchange.com,bilibili.com \
+  --max-results 5 --min-results 2 --timeout 60 --max-chars 2800
+```
+
+Brave → Yahoo 顺序回退，`status=ok` 即停；字符预算、域名白名单、反爬识别（`challenge-detected`）与失败原因都写进 JSON。只有 `ok` 才允许把结果当外部来源，其余一律降级为「未外部检索」。
+
 ### 4. 批改、记忆与复习
 
 - 五类错因：概念 / 运算 / 表述 / 方法选择 / 审题。
@@ -183,8 +194,8 @@ Skill 会先收「主教材 / 考纲 / 考试信息」三件套，再按三层�
 ```text
 study-coach/
 ├── SKILL.md                 # 技能入口：触发语、主循环、硬规则、完成标准
-├── checks.json              # 27 项验收清单
-├── references/              # 9 份协议文档 + capabilities.json（25 项能力契约）
+├── checks.json              # 29 项验收清单
+├── references/              # 9 份协议文档 + capabilities.json（26 项能力契约）
 │   ├── source-layers.md     # 资料分层、冲突裁决、缺口检测
 │   ├── lecture-and-drill.md # 九步讲义循环、七段讲题、三层追问
 │   ├── solution-research.md # 解法检索、多解对比、来源与降级
@@ -194,10 +205,10 @@ study-coach/
 │   ├── output-contract.md   # 输出模板、公式渲染、引用规则
 │   ├── research.md          # 检索、引用回指、失败降级
 │   └── tech-stack.md        # 选型、依赖、升级触发条件
-├── scripts/                 # 20 个可执行脚本
+├── scripts/                 # 21 个可执行脚本
 ├── subjects/calculus/       # 学科插件：考纲、渲染、题型、误解库、术语
 ├── 知识库模板/              # 可直接复制的学习库骨架，含示例讲义与记录
-├── evals/                   # 22 条行为用例、29 条检索、44 条路由、14 个 fixture
+├── evals/                   # 23 条行为用例、29 条检索、46 条路由、17 个 fixture
 └── agents/openai.yaml       # Agent 接口描述
 ```
 
@@ -207,20 +218,20 @@ study-coach/
 
 ```bash
 python scripts/run_checks.py --skill-root . --kb <你的学习库>
-# passed=26 failed=0 skipped=0
+# passed=29 failed=0 skipped=0
 
 python scripts/route.py --eval evals/routing.jsonl
-# top1=41/42 (98%)  top3=42/42 (100%)
+# top1=45/46 (98%)  top3=46/46 (100%)
 ```
 
 当前基线：
 
 | 项目 | 数量 / 结果 |
 | --- | --- |
-| 验收检查 | 27 项，全部 PASS |
-| 可执行脚本 | 20 个 |
-| 能力契约 | 25 项，entry/reference 全部指向真实文件 |
-| 行为评测 | 22 条 |
+| 验收检查 | 29 项，全部 PASS |
+| 可执行脚本 | 21 个 |
+| 能力契约 | 26 项，entry/reference 全部指向真实文件 |
+| 行为评测 | 23 条 |
 | 检索评测 | 29 条真实问法，hybrid hit@5 全中 |
 | 路由回归 | top1 98%，top3 100% |
 | 真实学习库体检 | 无 error |

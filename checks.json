@@ -112,6 +112,16 @@
       "desc": "解法检索协议齐全：solution-research.md 含检索顺序、多解表、未外部检索降级与质量门；SKILL.md 含多解必须验算与入口"
     },
     {
+      "id": "web_search",
+      "level": "error",
+      "desc": "web_search.py 解析 Brave/Yahoo 结果、解出真实 URL、域名过滤与字符预算生效、反爬退出 2、全程不声明使用 key"
+    },
+    {
+      "id": "privacy",
+      "level": "error",
+      "desc": "公开仓库前扫描：无私钥/API key/token、无本机绝对路径、无个人邮箱（noreply/example 例外）"
+    },
+    {
       "id": "render_rules",
       "level": "error",
       "desc": "对话输出约定齐全：output-contract.md 写清 CommonMark 不解析 LaTeX、Unicode 与代码块，且对话小节正文无裸 $；render.md 与 SKILL.md 同步"

@@ -58,6 +58,10 @@ REQUIRED = [
     "evals/fixtures/explain-multi-good.md",
     "scripts/export_book.py",
     "scripts/intake_check.py",
+    "scripts/web_search.py",
+    "evals/fixtures/search-brave.html",
+    "evals/fixtures/search-yahoo.html",
+    "evals/fixtures/search-challenge.html",
     "scripts/run_checks.py",
     "subjects/calculus/syllabus.md",
     "subjects/calculus/render.md",
@@ -419,16 +423,126 @@ def check_solution_research(root: Path) -> list[dict]:
         return [finding("error", "缺文件：references/solution-research.md")]
     text = doc.read_text(encoding="utf-8", errors="replace")
     for needle in ("什么时候检索", "检索顺序", "多解对比", "未外部检索",
-                   "explain_lint.py", "--level multi"):
+                   "explain_lint.py", "--level multi", "web_search.py",
+                   "--include-domains", "apiKeyUsed=false"):
         if needle not in text:
             out.append(finding("error", f"solution-research.md 缺「{needle}」"))
     skill = root / "SKILL.md"
     if not skill.is_file():
         return out + [finding("error", "缺文件：SKILL.md")]
     skill_text = skill.read_text(encoding="utf-8", errors="replace")
-    for needle in ("多解必须验算", "references/solution-research.md"):
+    for needle in ("多解必须验算", "references/solution-research.md",
+                   "检索先跑脚本", "scripts/web_search.py"):
         if needle not in skill_text:
             out.append(finding("error", f"SKILL.md 缺「{needle}」"))
+    return out
+
+
+def check_web_search(root: Path) -> list[dict]:
+    """零 key 检索：解析、域名过滤、字符预算、反爬与无 key 声明。"""
+    out: list[dict] = []
+    script = root / "scripts/web_search.py"
+    brave = root / "evals/fixtures/search-brave.html"
+    yahoo = root / "evals/fixtures/search-yahoo.html"
+    challenge = root / "evals/fixtures/search-challenge.html"
+
+    def run(extra: list[str]) -> tuple[int, dict | None, str]:
+        proc = subprocess.run(
+            [sys.executable, str(script), *extra],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        try:
+            return proc.returncode, json.loads(proc.stdout), ""
+        except json.JSONDecodeError:
+            return proc.returncode, None, (proc.stdout or proc.stderr).strip()[:160]
+
+    cases = [
+        ("Brave 解析", ["q", "--engine", "brave", "--fixture-brave", str(brave),
+                       "--max-results", "3"], 0, "brave-html", 3),
+        ("Yahoo 解析", ["q", "--engine", "yahoo", "--fixture-yahoo", str(yahoo),
+                        "--max-results", "3"], 0, "yahoo-html", 2),
+        ("域名过滤", ["q", "--engine", "brave", "--fixture-brave", str(brave),
+                      "--include-domains", "bilibili.com"], 0, "brave-html", 1),
+        ("字符预算", ["q", "--engine", "brave", "--fixture-brave", str(brave),
+                      "--max-chars", "100"], 0, "brave-html", 1),
+    ]
+    for label, extra, expected, provider, minimum in cases:
+        code, data, err = run(extra)
+        if data is None:
+            out.append(finding("error", f"{label}输出不是 JSON：{err}"))
+            continue
+        if code != expected:
+            out.append(finding("error", f"{label}返回 {code}（期望 {expected}）：{data.get('firstFailureReason')}"))
+            continue
+        if data.get("provider") != provider:
+            out.append(finding("error", f"{label} provider={data.get('provider')}（期望 {provider}）"))
+        if len(data.get("results") or []) < minimum:
+            out.append(finding("error", f"{label}结果数 {len(data.get('results') or [])} < {minimum}"))
+        if data.get("apiKeyUsed") is not False:
+            out.append(finding("error", f"{label} apiKeyUsed 不是 false"))
+        if data.get("resultChars", 0) > data.get("outputBudgetChars", 0):
+            out.append(finding("error", f"{label} resultChars 超出预算"))
+        if label == "Yahoo 解析":
+            urls = [r.get("url", "") for r in data.get("results") or []]
+            if any(u.startswith("https://r.search.yahoo.com") for u in urls):
+                out.append(finding("error", "Yahoo 结果未解出真实 URL"))
+            if not any("bilibili.com" in u for u in urls):
+                out.append(finding("error", "Yahoo 结果缺 bilibili.com"))
+
+    code, data, err = run(["q", "--engine", "brave", "--fixture-brave", str(challenge)])
+    if data is None:
+        out.append(finding("error", f"反爬样例输出不是 JSON：{err}"))
+    elif code != 2 or "challenge-detected" not in (data.get("firstFailureReason") or ""):
+        out.append(finding(
+            "error",
+            f"反爬样例未按 challenge-detected 退出 2：code={code} reason={data.get('firstFailureReason')}",
+        ))
+    return out
+
+
+PRIVACY_RULES = [
+    ("私钥", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+    ("OpenAI 风格 key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}")),
+    ("GitHub token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}")),
+    ("AWS access key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("硬编码密钥", re.compile(
+        r"(?i)\b(api[_-]?key|secret|password|access[_-]?token)\b\s*[:=]\s*[\"'][^\"'\s]{8,}[\"']")),
+    ("本机绝对路径", re.compile(r"(?i)\b[A-Z]:[\\/](?:Users|Documents)[\\/]([^\\/\s\"'`]+)")),
+    ("邮箱", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
+]
+PRIVACY_SKIP_DIRS = {".git", ".index", "__pycache__", ".venv", "node_modules", "学习库"}
+PRIVACY_ALLOW_EMAIL_DOMAINS = ("users.noreply.github.com", "noreply.github.com",
+                               "example.com", "example.org", "example.net")
+
+
+def check_privacy(root: Path) -> list[dict]:
+    """公开仓库前扫描：密钥、私钥、本机绝对路径与个人邮箱。"""
+    out: list[dict] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if PRIVACY_SKIP_DIRS & set(path.relative_to(root).parts):
+            continue
+        if path.stat().st_size > 1_000_000:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        rel = path.relative_to(root).as_posix()
+        for lineno, line in enumerate(text.splitlines(), 1):
+            for label, pattern in PRIVACY_RULES:
+                for match in pattern.finditer(line):
+                    hit = match.group(0)
+                    if label == "本机绝对路径":
+                        segment = match.group(1)
+                        if "<" in segment or "%" in segment or segment.lower() in {"you", "user", "username"}:
+                            continue
+                    if label == "邮箱":
+                        domain = hit.rsplit("@", 1)[-1].lower()
+                        if domain.endswith(PRIVACY_ALLOW_EMAIL_DOMAINS):
+                            continue
+                    out.append(finding("error", f"{label}：{rel}:{lineno}"))
     return out
 
 
@@ -1537,6 +1651,8 @@ CHECKS = {
     "step_check": lambda root, kb: check_step_check(root),
     "explain_lint": lambda root, kb: check_explain_lint(root),
     "solution_research": lambda root, kb: check_solution_research(root),
+    "web_search": lambda root, kb: check_web_search(root),
+    "privacy": lambda root, kb: check_privacy(root),
     "render_rules": lambda root, kb: check_render_rules(root),
     "export_and_backlinks": lambda root, kb: check_export_and_backlinks(root),
     "confusion_stats": lambda root, kb: check_confusion_stats(root),

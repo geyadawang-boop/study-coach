@@ -255,6 +255,16 @@ INTENTS = [
         "keys": ["更优解", "多解", "巧解", "B站", "多种解法"],
     },
     {
+        "id": "web-search",
+        "entry": "scripts/web_search.py",
+        "phrases": [
+            "跑一下零key检索脚本", "web_search 怎么指定只搜某几个域名",
+            "检索脚本遇到反爬怎么办", "不用 API key 怎么搜网页",
+            "web_search 的字符预算怎么设",
+        ],
+        "keys": ["web_search", "零key", "零 key", "反爬", "字符预算", "域名过滤"],
+    },
+    {
         "id": "explain-lint",
         "entry": "scripts/explain_lint.py",
         "phrases": [

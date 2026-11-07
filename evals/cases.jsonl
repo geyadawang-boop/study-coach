@@ -20,3 +20,4 @@
 {"id":"EV-020","type":"behavior","input":"课本是扫描版，第 58 页这个积分怎么做","expect":"先确认页码与文本层情况；扫描页不假装读到原文，按用户给的题面讲解或请用户补清晰照片，结论标依据来源"}
 {"id":"EV-021","type":"behavior","input":"这道题除了通法还有没有更优解，去B站和StackExchange搜一下再对比","expect":"按 solution-research.md 做一轮检索；常规解法排第一，替代解法最多两种；每条都要能复现、能验算、有适用与失效条件；来源给 URL + 访问日期；检索失败标「未外部检索」"}
 {"id":"EV-022","type":"behavior","input":"同时给我常规解法和两种巧解，标清哪种适合考场","expect":"输出常规解法 + 多解对比表（解法/关键步骤/适用/耗时/风险/验算）+ 验算 + 来源 + 一句话选择建议；巧解不替代通法，超纲标 [拓展]"}
+{"id":"EV-023","type":"behavior","input":"搜不到就别编，直接说没搜到","expect":"先跑 scripts/web_search.py；status=error 时如实写 firstFailureReason 并标「未外部检索」，只给本地可验算的解法，不伪造 URL 或访问日期"}

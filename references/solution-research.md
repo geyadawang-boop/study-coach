@@ -15,6 +15,26 @@
 
 一次讲解最多检索 1 轮、2 次尝试；单次 60 秒超时。超时或失败立即走降级，不对同一请求反复重试。
 
+## 检索工具
+
+Skill 自带零 API Key 检索脚本，不依赖宿主是否开放搜索工具：
+
+```bash
+python scripts/web_search.py "tanx-sinx/x^3 一题多解" \
+  --include-domains bilibili.com,math.stackexchange.com,arxiv.org \
+  --preferred-domains math.stackexchange.com,bilibili.com \
+  --max-results 5 --min-results 2 --timeout 60 --max-chars 2800
+```
+
+- 顺序固定 Brave → Yahoo；`status=ok` 即停，同一请求不重复发。
+- `status=degraded`：有结果但弱（少于 `--min-results`），可引用但要标注「结果偏少」。
+- `status=error`：读 `firstFailureReason`，`challenge-detected` / `timeout` / `no-results` / `filtered-out` / `budget-exhausted` 原样写进降级说明。
+- 输出 JSON：`results[].title/url/snippet`、`providerAttempts`、`apiKeyUsed=false`、`resultChars`。
+- 只发 GET，不登录、不带 key、不落盘；离线自测用 `--fixture-brave` / `--fixture-yahoo`。
+- 传输优先 `curl.exe`（Yahoo 对 urllib 的指纹常回 500），没有 curl 时退回 urllib 并重试一次。
+
+外部检索统一走这个脚本，用 `--include-domains` 把范围锁在 B 站、StackExchange、arXiv，避免搜到不可控页面。
+
 ## 检索顺序
 
 | 顺位 | 来源 | 怎么查 | 可信度 |
@@ -89,7 +109,7 @@ B 站检索建议用「题目关键词 + 一题多解 / 巧解 / 秒杀」，优
 ## 检索失败与降级
 
 ```text
-未查到可用的外部解法（查了 B 站/StackExchange，失败原因：超时/无结果）。
+未查到可用的外部解法（web_search 返回 status=error，原因：challenge-detected / timeout / no-results）。
 以下给两种本地推导：常规解法 + 一种替代解法，均已验算。
 外部来源标 [未外部检索]，需要我换关键词再试吗？
 ```

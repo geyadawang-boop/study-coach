@@ -326,6 +326,23 @@
       ]
     },
     {
+      "id": "web-search",
+      "name": "零 API Key 网页检索",
+      "entry": "scripts/web_search.py",
+      "reference": "references/solution-research.md",
+      "inputs": ["检索词（题目核心式）", "可选 --include-domains / --preferred-domains",
+                 "总预算 --timeout、字符预算 --max-chars", "离线自测 HTML fixture"],
+      "outputs": ["结果 JSON：title/url/snippet", "providerAttempts 与 firstFailureReason",
+                  "status=ok|degraded|error", "apiKeyUsed=false"],
+      "failure_modes": [
+        "Brave/Yahoo 返回 403/429 → upstream-http-blocked，继续下一引擎",
+        "命中验证码/异常流量 → challenge-detected，退出 2，不硬解析",
+        "域名过滤后为空 → filtered-out；没有结果 → no-results",
+        "超出字符预算 → budget-exhausted 或计入 budgetOmittedResults",
+        "总预算耗尽 → timeout，不重试同一请求"
+      ]
+    },
+    {
       "id": "acceptance",
       "name": "技能自验收",
       "entry": "scripts/run_checks.py",
