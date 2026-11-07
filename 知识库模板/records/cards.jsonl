@@ -1,0 +1,1 @@
+{"schema":1,"id":"CARD-0001","ts":"2026-11-08","type":"步骤","title":"0/0 型极限含根式","signal":["分子分母含根号","x→0 时同时趋于 0"],"method":"有理化 + 等价无穷小","steps":["分子分母同乘共轭","整理为乘积","等价替换或直接取极限"],"boundary":"根号内为负或 x→∞ 时改用倒代换","evidence":["LEC-001"],"errors":["ERR-0001"],"parent":null,"status":"hypothesis"}

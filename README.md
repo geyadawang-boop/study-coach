@@ -115,6 +115,13 @@ git clone https://github.com/geyadawang-boop/study-coach.git
 
 把 `study-coach/` 放进你的 Agent 技能目录（例如 `~/.trae-cn/skills/study-coach`，具体以你所用的客户端为准），入口文件是 `SKILL.md`。
 
+复制一份知识库骨架，避免从零建目录：
+
+```bash
+cp -r 知识库模板 学习库          # Windows: Copy-Item -Recurse 知识库模板 学习库
+python scripts/kb_health.py 学习库   # errors=0 warnings=0
+```
+
 核心脚本只用 Python 标准库；以下依赖按需安装：
 
 ```bash
@@ -146,6 +153,21 @@ Skill 会先收「主教材 / 考纲 / 考试信息」三件套，再按三层�
 | 分析一下这份真题卷都考了什么，分值怎么分布 | 整卷报告 |
 | 把错题导出成能打印的册子 | 习题册导出 |
 
+## 本地知识库管理
+
+`知识库模板/` 是一份可跑通的最小学习库，复制成 `学习库/` 后直接使用：
+
+| 动作 | 命令 | 产出 |
+| --- | --- | --- |
+| 体检 | `python scripts/kb_health.py 学习库` | 孤儿记录、断链、过期卡、坏 JSONL |
+| 生成视图 | `python scripts/kb_view.py --kb 学习库` | 资料清单、题型卡片、易错点汇总、学情快照、双链反查 |
+| 困惑统计 | `python scripts/kb_stats.py 学习库/records/confusions.jsonl --output 学习库/views/高频困惑点统计.md` | 高频困惑点 |
+| 建索引 | `python scripts/kb_index.py build 学习库 --db 学习库/.index/index.db` | FTS5 索引，可删可重建 |
+| 检索 | `python scripts/kb_index.py search 学习库/.index/index.db "有理化" --top 5` | 命中笔记与切块 |
+| 复习排期 | `python scripts/review_schedule.py --kb 学习库` | 到期卡与间隔 |
+
+模板自带一条完整链路：`DOC-0001` 资料、`LEC-001` 讲义、`CARD-0001` 卡片、`ERR-0001` 错题、`CONF-0001` 困惑、`EVT-000001` 事件。实测 `kb_health` 输出 `errors=0 warnings=0 infos=0`，索引 6 篇文档、24 个切块。
+
 ## 目录结构
 
 ```text
@@ -163,6 +185,7 @@ study-coach/
 │   └── tech-stack.md        # 选型、依赖、升级触发条件
 ├── scripts/                 # 20 个可执行脚本
 ├── subjects/calculus/       # 学科插件：考纲、渲染、题型、误解库、术语
+├── 知识库模板/              # 可直接复制的学习库骨架，含示例讲义与记录
 ├── evals/                   # 20 条行为用例、29 条检索、42 条路由、13 个 fixture
 └── agents/openai.yaml       # Agent 接口描述
 ```

@@ -1,0 +1,1 @@
+{"schema":1,"id":"ERR-0001","ts":"2026-11-08","chapter":"第1章","concept":"0/0 型极限","desc":"直接代入后不做有理化就套等价无穷小","consequence":"丢分","fix":"先有理化，再整理成乘积，最后等价替换","count":1,"first_seen":"2026-11-08","source":"LEC-001","status":"open"}
