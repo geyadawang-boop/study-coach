@@ -1,0 +1,20 @@
+{
+  "source": "scan-p50.png",
+  "page": 50,
+  "dpi": 200,
+  "image": "fig/scan-p50.png",
+  "chars": 96,
+  "low_conf": 2,
+  "lines": [
+    {"text": "期中试卷 2025 秋季", "score": 0.99},
+    {"text": "一、计算题", "score": 0.98},
+    {"text": "1. 计算下列极限（8分）", "score": 0.97},
+    {"text": "lim (sqrt(1+x)-1)/x", "score": 0.96},
+    {"text": "2. 证明中值定理（10分）", "score": 0.84},
+    {"text": "设函数在闭区间连续", "score": 0.88},
+    {"text": "三、解答题", "score": 0.97},
+    {"text": "3. 求曲线切线方程（6分）", "score": 0.96},
+    {"text": "（1）写出导数定义", "score": 0.95},
+    {"text": "3.14 是圆周率", "score": 0.94}
+  ]
+}

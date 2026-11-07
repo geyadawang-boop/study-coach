@@ -1,0 +1,3 @@
+{"paper": "SCHEMA-1", "no": "1", "stem": "缺 type 与 page_start，且 latex 写成字符串。", "latex": "\\frac{1}{2}", "points": 5, "source": "text-layer", "conf": 0.99, "flags": []}
+{"paper": "SCHEMA-1", "no": "2", "stem": "page_start 为 0，figure 写成数组。", "page_start": 0, "figure": ["fig/a.png"], "type": "计算", "points": 5, "source": "scan-ocr", "conf": 0.95, "flags": []}
+{"paper": "SCHEMA-1", "no": "3", "stem": "跨页题 page_end 小于 page_start。", "page_start": 3, "page_end": 2, "type": "证明", "points": 5, "source": "text-layer", "conf": 0.95, "flags": []}

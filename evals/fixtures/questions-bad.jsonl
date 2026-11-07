@@ -1,0 +1,2 @@
+{"paper": "MID-2025B", "no": "1", "stem": "求极限 lim_{x→0} sin x / x。", "type": "计算", "points": 5, "conf": 0.72, "flags": []}
+{"paper": "MID-2025B", "no": "1", "stem": "重复题号，用于验证质量门。", "type": "计算", "points": 10, "source": "scan-ocr", "conf": 0.95, "flags": []}

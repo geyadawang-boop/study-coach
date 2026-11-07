@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "checks": [
+    {
+      "id": "layout",
+      "level": "error",
+      "desc": "SKILL.md、references/、scripts/、agents/、evals/、subjects/ 必需文件齐全"
+    },
+    {
+      "id": "frontmatter",
+      "level": "error",
+      "desc": "SKILL.md frontmatter 有 name/description，name 与目录同名，description 含英文触发语"
+    },
+    {
+      "id": "routing",
+      "level": "error",
+      "desc": "SKILL.md 提到的每个 references/*.md 与 scripts/*.py 真实存在；未被引用的文件给出警告"
+    },
+    {
+      "id": "routing_eval",
+      "level": "error",
+      "desc": "route.py 回放 evals/routing.jsonl：expect 路径存在、top1≥85%、top3≥95%，且 references/scripts 都有对应意图"
+    },
+    {
+      "id": "evals",
+      "level": "error",
+      "desc": "evals/cases.jsonl 逐行合法、id 唯一、type 与字段匹配"
+    },
+    {
+      "id": "compile",
+      "level": "error",
+      "desc": "scripts/ 下所有 Python 文件可编译"
+    },
+    {
+      "id": "index_roundtrip",
+      "level": "error",
+      "desc": "kb_index.py 能在临时目录建 FTS5 索引，检索中文子串，并按定理/步骤/例题/陷阱四类过滤"
+    },
+    {
+      "id": "retrieval_eval",
+      "level": "error",
+      "desc": "用 subjects/calculus 真实资料与 evals/retrieval.jsonl 跑三种检索模式，hybrid hit@5 必须全中"
+    },
+    {
+      "id": "intake_gate",
+      "level": "error",
+      "desc": "intake_check.py 对好/坏/缺字段 fixture 的判定与预期一致（schema、页码、字段类型、题型分布、题数与总分）"
+    },
+    {
+      "id": "pdf_probe",
+      "level": "error",
+      "desc": "pdf_probe.py 对文本层 PDF 判 A、空白/扫描 PDF 判 B，缺文件与非 PDF 退出 2（未装 PyMuPDF 时跳过）"
+    },
+    {
+      "id": "ocr_page",
+      "level": "error",
+      "desc": "ocr_page.py 能 OCR 渲染页（文本层 PDF 转图）、页码越界与非 PDF 退出 2；缺依赖时跳过"
+    },
+    {
+      "id": "paper_report",
+      "level": "error",
+      "desc": "paper_report.py 生成题型/考点/难度/陷阱/母题五节，待核题单列且不入统计，考点合计不符退出 1"
+    },
+    {
+      "id": "weekly_report",
+      "level": "error",
+      "desc": "weekly_report.py 按窗口汇总事件/退出票/复习/错题/困惑，空库给自检提示，缺库退出 2"
+    },
+    {
+      "id": "slice_questions",
+      "level": "error",
+      "desc": "slice_questions.py 从文本/OCR JSON 切出题目草稿，小数不误切，低置信标待核，小题号入 sub"
+    },
+    {
+      "id": "chapter_diff",
+      "level": "error",
+      "desc": "chapter_diff.py 对比 Markdown/PDF/toc.json 章节树，报新增/删除/改名/页码偏移，并标记已退役题"
+    },
+    {
+      "id": "toc_extract",
+      "level": "error",
+      "desc": "toc_extract.py 从目录页文本层或 OCR 抽章节树，输出 raw 供模型校对，错位目录退出 1 并提示重建"
+    },
+    {
+      "id": "mock_paper",
+      "level": "error",
+      "desc": "mock_paper.py 按原卷结构生成组卷蓝图与逐步 rubric，待核题剔除，缺分值退出 1"
+    },
+    {
+      "id": "page_regions",
+      "level": "error",
+      "desc": "page_regions.py 校验模型给的 regions.json，按栏/跨页裁图并逐区取文本，越界与重复题号退出 2"
+    },
+    {
+      "id": "review_schedule",
+      "level": "error",
+      "desc": "review_schedule.py 回放 reviews.jsonl 历史，FSRS/四档阶梯给出下次间隔与到期日，--record 追加 REV 记录"
+    },
+    {
+      "id": "step_check",
+      "level": "error",
+      "desc": "step_check.py 能验证等价链：正确链通过，错误链判 FAIL"
+    },
+    {
+      "id": "explain_lint",
+      "level": "error",
+      "desc": "explain_lint.py 校验讲题稿七段与追问稿三层：好样例 PASS，缺易错点或缺视角退出 1"
+    },
+    {
+      "id": "render_rules",
+      "level": "error",
+      "desc": "对话输出约定齐全：output-contract.md 写清 CommonMark 不解析 LaTeX、Unicode 与代码块，且对话小节正文无裸 $；render.md 与 SKILL.md 同步"
+    },
+    {
+      "id": "export_and_backlinks",
+      "level": "error",
+      "desc": "kb_view.py 生成双链反查、手改视图时告警；export_book.py 导出 md/html、--errors-only 与 --max 行为正确"
+    },
+    {
+      "id": "confusion_stats",
+      "level": "error",
+      "desc": "kb_stats.py 聚合 confusions.jsonl、坏行跳过计数、输出目录自动创建"
+    },
+    {
+      "id": "capabilities",
+      "level": "error",
+      "desc": "references/capabilities.json 结构完整，entry/reference 指向的文件存在"
+    },
+    {
+      "id": "kb_health",
+      "level": "error",
+      "desc": "指定 --kb 时，学习库无 error 级问题；未指定则跳过"
+    }
+  ]
+}

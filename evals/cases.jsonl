@@ -1,0 +1,20 @@
+{"id":"EV-001","type":"trigger","input":"下周微积分期中，帮我把考点过一遍并出几道自测","expect_skill":true}
+{"id":"EV-002","type":"trigger","input":"高数真题逐题带练，我先做你再批改","expect_skill":true}
+{"id":"EV-003","type":"trigger","input":"把这几次追问整理成高频困惑点知识库","expect_skill":true}
+{"id":"EV-004","type":"non_trigger","input":"帮我写一个 Python 文件读写脚本","expect_skill":false}
+{"id":"EV-005","type":"non_trigger","input":"解释一下导数这个词的字面意思","expect_skill":false}
+{"id":"EV-006","type":"behavior","input":"这道极限题用洛必达做给我看（课程禁用洛必达）","expect":"说明考场风险并给出合规解法，不把洛必达作为主解法"}
+{"id":"EV-007","type":"behavior","input":"这是我的作业，别直接给我答案","expect":"先给思路链和关键提问，等用户写解法后再批改"}
+{"id":"EV-008","type":"behavior","input":"开始第 5 讲，附上自测答案","expect":"出 3 道自测题但不附答案，除非用户明确要求直接给答案"}
+{"id":"EV-009","type":"behavior","input":"输出含绝对值和整数集的公式","expect":"不使用 \\left|...\\right| 与 \\mathbb{Z}，改用 \\lvert/\\rvert 与 \\mathbf{Z}"}
+{"id":"EV-010","type":"trigger","input":"下个月考数据结构，帮我系统复习","expect_skill":true}
+{"id":"EV-011","type":"trigger","input":"我要准备雅思，手上有真题和一本教材","expect_skill":true}
+{"id":"EV-012","type":"behavior","input":"这是我的课本 PDF，直接开始讲第三章","expect":"先确认教材的 layer/kind/trust/coverage 四标与考纲、考试信息，再开讲；资料不全时走降级路径而不是直接铺开"}
+{"id":"EV-013","type":"behavior","input":"老师发的讲义和教材说法不一样，听谁的","expect":"先判冲突类型，按范围/权威/应试三层分别裁决，写入 CONF 记录并说明考试按哪套写"}
+{"id":"EV-014","type":"behavior","input":"再给你一份考研辅导书，加进资料库","expect":"问清 kind 与 layer（应为 supplement），打四标入库，只做增量覆盖映射，不推翻已有进度"}
+{"id":"EV-015","type":"non_trigger","input":"帮我把这份 PDF 转成 Word","expect_skill":false}
+{"id":"EV-016","type":"behavior","input":"这题我不会，直接给我答案","expect":"先反问卡在哪一步，按提示阶梯逐级给；只有用户明确坚持或已到约定时限才给第 5 级完整解答，给完后要求重做"}
+{"id":"EV-017","type":"behavior","input":"我这题答案对了，过程你看下","expect":"逐步核对；若结果对但关键步错或蒙对，判侥幸正确并记 ERR（consequence=结论错），要求重讲该步并重做"}
+{"id":"EV-018","type":"behavior","input":"这个结论是哪本书说的？","expect":"引用回指 DOC#页码或 URL；指不到就删并说明依据层级，不把模型记忆说成资料原文"}
+{"id":"EV-019","type":"behavior","input":"帮我解剖这份期中卷，整理考点分布","expect":"先过质量门（题数/总分/题型），再逐题补 concepts/difficulty/traps/skeleton，输出整卷报告；待核题单列且不计入统计"}
+{"id":"EV-020","type":"behavior","input":"课本是扫描版，第 58 页这个积分怎么做","expect":"先确认页码与文本层情况；扫描页不假装读到原文，按用户给的题面讲解或请用户补清晰照片，结论标依据来源"}

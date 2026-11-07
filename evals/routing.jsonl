@@ -1,0 +1,42 @@
+{"id":"RT-01","input":"我下周考试，手上只有教材和老师划的范围，资料该怎么分级","expect":"references/source-layers.md"}
+{"id":"RT-02","input":"老师说按考纲为准，但教材写得不一样，这种情况怎么处理","expect":"references/source-layers.md"}
+{"id":"RT-03","input":"开始第三讲吧，先给我几道自测，答案别一起发","expect":"references/lecture-and-drill.md"}
+{"id":"RT-04","input":"这题我没有思路，先别告诉我完整解法","expect":"references/lecture-and-drill.md"}
+{"id":"RT-05","input":"把这份期中卷子导进来，整理成能统计的题目数据","expect":"references/paper-intake.md"}
+{"id":"RT-06","input":"试卷里的题目需要哪些字段才算合规","expect":"references/paper-intake.md"}
+{"id":"RT-07","input":"帮我批改这几道题，看看错在哪一类","expect":"references/error-taxonomy.md"}
+{"id":"RT-08","input":"针对这个错误再出两道换条件的变式题","expect":"references/error-taxonomy.md"}
+{"id":"RT-09","input":"卡片和记录文件分别存什么，目录怎么排","expect":"references/knowledge-base.md"}
+{"id":"RT-10","input":"掌握到什么程度算 L2，需要什么证据","expect":"references/knowledge-base.md"}
+{"id":"RT-11","input":"讲之前先查一下我笔记里有没有相关结论","expect":"references/research.md"}
+{"id":"RT-12","input":"这句话引用哪一页，找不到出处就别写","expect":"references/research.md"}
+{"id":"RT-13","input":"题型卡和快照的排版有统一模板吗","expect":"references/output-contract.md"}
+{"id":"RT-14","input":"公式里能不能用 mathbb 和 left 竖线","expect":"references/output-contract.md"}
+{"id":"RT-15","input":"这些库必须安装吗，能不能只用标准库","expect":"references/tech-stack.md"}
+{"id":"RT-16","input":"这份 PDF 是扫描的还是能直接复制文字","expect":"scripts/pdf_probe.py"}
+{"id":"RT-17","input":"第 58 页是图片，帮我把这页的文字识别出来","expect":"scripts/ocr_page.py"}
+{"id":"RT-18","input":"切出来的题数量对不上，总分也不对，帮我查","expect":"scripts/intake_check.py"}
+{"id":"RT-19","input":"从这页文本里先切出一版题目草稿","expect":"scripts/slice_questions.py"}
+{"id":"RT-20","input":"这卷子是左右两栏，还有一题连到下一页","expect":"scripts/page_regions.py"}
+{"id":"RT-21","input":"我这张卡什么时候再复习，按之前的记录算","expect":"scripts/review_schedule.py"}
+{"id":"RT-22","input":"今天复习完怎么把评分写进去","expect":"scripts/review_schedule.py"}
+{"id":"RT-23","input":"分析一下这份真题卷都考了什么，分值怎么分布","expect":"scripts/paper_report.py"}
+{"id":"RT-24","input":"按原卷结构给我组一份模拟卷","expect":"scripts/mock_paper.py"}
+{"id":"RT-25","input":"这本书的目录是拍下来的，没有书签目录","expect":"scripts/toc_extract.py"}
+{"id":"RT-26","input":"教材出了新版，想知道删了哪些章节和题","expect":"scripts/chapter_diff.py"}
+{"id":"RT-27","input":"把这周的学习情况汇总一下","expect":"scripts/weekly_report.py"}
+{"id":"RT-28","input":"帮我生成学情快照和双链反查","expect":"scripts/kb_view.py"}
+{"id":"RT-29","input":"我最近老在同一个地方错，统计一下高频困惑","expect":"scripts/kb_stats.py"}
+{"id":"RT-30","input":"给整个学习库建索引，之后按陷阱类型搜","expect":"scripts/kb_index.py"}
+{"id":"RT-31","input":"把错题导出成能打印的册子","expect":"scripts/export_book.py"}
+{"id":"RT-32","input":"帮我验算这两步变形是不是等价","expect":"scripts/step_check.py"}
+{"id":"RT-33","input":"学习库里的 jsonl 有没有坏行","expect":"scripts/kb_health.py"}
+{"id":"RT-34","input":"我该先读哪份参考文档","expect":"scripts/route.py"}
+{"id":"RT-35","input":"老师只给了考试范围，没给大纲，先讲哪块","expect":"references/source-layers.md"}
+{"id":"RT-36","input":"我做完题你帮我看看，是概念错还是算错","expect":"references/error-taxonomy.md"}
+{"id":"RT-37","input":"这书是拍的，目录没有书签","expect":"scripts/toc_extract.py"}
+{"id":"RT-38","input":"帮我把错题按考点排成一本","expect":"scripts/export_book.py"}
+{"id":"RT-39","input":"明天要交作业，别直接写答案","expect":"references/lecture-and-drill.md"}
+{"id":"RT-40","input":"上次那道题我又错了，是不是根本没懂","expect":"references/error-taxonomy.md"}
+{"id":"RT-41","input":"这道题讲完帮我检查讲题稿七段有没有缺","expect":"scripts/explain_lint.py"}
+{"id":"RT-42","input":"追问稿只给了一种推导，够不够深","expect":"scripts/explain_lint.py"}

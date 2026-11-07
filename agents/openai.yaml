@@ -1,0 +1,4 @@
+interface:
+  display_name: "通用学习教练"
+  short_description: "收教材与考纲建资料库，按讲义—真题—错题库推进的通用备考工作流"
+  default_prompt: "Use $study-coach to complete this task."

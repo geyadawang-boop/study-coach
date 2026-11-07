@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# 学习库与索引（个人数据，不入库）
+学习库/
+.index/
+
+# 系统文件
+.DS_Store
+Thumbs.db

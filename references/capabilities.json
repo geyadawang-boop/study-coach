@@ -1,0 +1,327 @@
+{
+  "schema": 1,
+  "updated": "2026-11-08",
+  "note": "能力契约：每项能力的输入、输出、失败态与入口。entry/reference 指向的文件必须存在，由 run_checks.py 的 capabilities 检查强制。",
+  "capabilities": [
+    {
+      "id": "source-ledger",
+      "name": "资料标定与缺口检测",
+      "entry": "scripts/kb_view.py",
+      "reference": "references/source-layers.md",
+      "inputs": ["用户上传的教材/考纲/真题/教辅", "records/sources.jsonl 四标记录"],
+      "outputs": ["02-资料清单.md", "三类缺口清单"],
+      "failure_modes": [
+        "四标不全 → 拒绝入库，放临时区",
+        "资料冲突 → 按范围/权威/应试三层裁决并记 CONF",
+        "无来源 → 标 inferred，不作裁决依据"
+      ]
+    },
+    {
+      "id": "paper-split",
+      "name": "试卷导入与切题质检",
+      "entry": "scripts/intake_check.py",
+      "reference": "references/paper-intake.md",
+      "inputs": ["PDF 文本层 / 扫描件 / 拍照", "Markdown 试卷或题目 JSONL"],
+      "outputs": ["统一题目 schema", "待核清单", "质量门结论"],
+      "failure_modes": [
+        "题号重复或缺失 → gate FAIL，先修再解剖",
+        "各题分值合计 ≠ 卷面总分 → 停止统计",
+        "conf < 0.90 未标待核 → 拒绝进入考点分布",
+        "切不准 → 输出疑似边界，不硬切"
+      ]
+    },
+    {
+      "id": "pdf-probe",
+      "name": "PDF 链路判定（文本层 vs 扫描）",
+      "entry": "scripts/pdf_probe.py",
+      "reference": "references/paper-intake.md",
+      "inputs": ["PDF 文件", "抽样页数（默认前 3 + 中段 3）", "文本层阈值（默认 200 字符/页）"],
+      "outputs": ["每页字符数与图片数", "逐页 A/B 判定", "整体建议 A/B/mixed 与处理提示"],
+      "failure_modes": [
+        "文件不存在或不是 PDF → 退出 2，不猜内容",
+        "未装 PyMuPDF → 退出 3，提示安装或改用人工抽样",
+        "加密/损坏 → 报原始错误并退出 2",
+        "混合卷 → 标 mixed，按页选择链路，不整本一刀切"
+      ]
+    },
+    {
+      "id": "ocr-page",
+      "name": "单页 OCR（扫描件/拍照链路）",
+      "entry": "scripts/ocr_page.py",
+      "reference": "references/paper-intake.md",
+      "inputs": ["PDF 或图片", "页码（PDF）", "渲染 dpi（默认 200）"],
+      "outputs": ["逐行文本与置信度", "字符数", "低置信行数与「待核」提示", "可另存渲染图到 fig/"],
+      "failure_modes": [
+        "页码越界/非 PDF/损坏 → 退出 2",
+        "未装 PyMuPDF 或 RapidOCR → 退出 3",
+        "行置信度 < 0.90 → 标「待核」，不进评分",
+        "公式与手写不自动改写，按 D 链路单独处理"
+      ]
+    },
+    {
+      "id": "paper-report",
+      "name": "整卷报告",
+      "entry": "scripts/paper_report.py",
+      "reference": "references/paper-intake.md",
+      "inputs": ["已解剖的题目 JSONL", "可选卷别过滤"],
+      "outputs": ["卷面结构/考点分布/难度曲线/陷阱清单/高频母题", "待核题单列", "数据自检（考点合计 vs 总分）"],
+      "failure_modes": [
+        "输入不可读或无题目 → 退出 2",
+        "考点分值合计与有效题总分不一致 → 退出 1，先修数据",
+        "conf < 0.90 的题不进考点与难度统计"
+      ]
+    },
+    {
+      "id": "weekly-report",
+      "name": "学习周报",
+      "entry": "scripts/weekly_report.py",
+      "reference": "references/knowledge-base.md",
+      "inputs": ["学习库根目录", "窗口结束日与天数（默认 7 天）"],
+      "outputs": ["事件与退出票统计", "复习次数/平均 rating/评级分布/最弱步骤/到期卡片", "错题与困惑汇总", "数据自检"],
+      "failure_modes": [
+        "kb 不存在或 --end 非法 → 退出 2",
+        "窗口内无记录 → 输出 0 值并附「没有任何记录」提示，不编造",
+        "坏行跳过并计数，不静默忽略"
+      ]
+    },
+    {
+      "id": "slice-questions",
+      "name": "文本/OCR 切题（草稿）",
+      "entry": "scripts/slice_questions.py",
+      "reference": "references/paper-intake.md",
+      "inputs": ["OCR JSON（ocr_page.py --json）或纯文本/Markdown", "卷别"],
+      "outputs": ["题目草稿 JSONL", "题号/页码/题型/分值/置信度", "待核与疑似边界标记"],
+      "failure_modes": [
+        "未识别到题号 → 退出 1，不硬切",
+        "小数（如 3.14）不误判为题目起点",
+        "低置信行 → 标「待核」，不进评分",
+        "缺分值/题型 → 标缺失，补齐后再过 intake_check"
+      ]
+    },
+    {
+      "id": "toc-extract",
+      "name": "印刷目录抽取（供模型校对）",
+      "entry": "scripts/toc_extract.py",
+      "reference": "references/source-layers.md",
+      "inputs": ["PDF", "目录页范围（如 2-4）", "模式 auto/text/ocr"],
+      "outputs": ["toc.json（tree 层级/标题/页码）", "raw 原文行（含页码与置信度）", "pending/suspects 待校对清单"],
+      "failure_modes": [
+        "未给 --pages、页码越界或文件缺失 → 退出 2",
+        "文本层错位导致解析不出标题 → 退出 1，输出 raw 交由模型重建 toc.json",
+        "无文本层且未装 RapidOCR → 提示依赖并退出 2"
+      ]
+    },
+    {
+      "id": "chapter-diff",
+      "name": "教材/考纲章节版本对比",
+      "entry": "scripts/chapter_diff.py",
+      "reference": "references/source-layers.md",
+      "inputs": ["旧版/新版 Markdown 标题树、PDF 目录或 toc_extract.py 的 toc.json", "可选题目 JSONL"],
+      "outputs": ["新增/删除/疑似改名章节", "页码偏移", "已退役题清单"],
+      "failure_modes": [
+        "文件缺失或无标题/目录 → 退出 2",
+        "未装 PyMuPDF 读 PDF → 提示并退出 2",
+        "疑似改名按相似度判定 → 需人工确认后才改教材节引用"
+      ]
+    },
+    {
+      "id": "mock-paper",
+      "name": "模拟卷组卷蓝图与 rubric",
+      "entry": "scripts/mock_paper.py",
+      "reference": "references/paper-intake.md",
+      "inputs": ["已解剖的题目 JSONL", "模拟卷名称"],
+      "outputs": ["卷面结构（题型/题量/分值/占比）", "母题→变式槽位", "按解法骨架折算的逐步得分点与扣分点"],
+      "failure_modes": [
+        "有效题为零 → 退出 1，不空卷",
+        "缺 type/points → 退出 1，说明不能组卷",
+        "缺 solution_skeleton → 警告，rubric 留待补",
+        "conf < 0.90 的题剔除，不进模拟卷"
+      ]
+    },
+    {
+      "id": "page-regions",
+      "name": "多栏/跨页像素级切题",
+      "entry": "scripts/page_regions.py",
+      "reference": "references/paper-intake.md",
+      "inputs": ["PDF 或拍照图片", "可选 --suggest 自动提案（题号正则 + 行框聚类 + 公式乱码行回填）", "模型复核后的 regions.json（page/bbox，跨页加 page_end/bbox_end）", "渲染 dpi"],
+      "outputs": ["fig/ 下的逐题裁图", "regions JSONL（page_start/page_end/bbox/images/stem/conf/flags）", "模板模式输出的页面图与 page_size", "建议模式输出的 regions.suggested.json（含 recovered 计数与 note 摘要）"],
+      "failure_modes": [
+        "bbox 越界、x0≥x1 或题号重复 → 退出 2，不裁错图",
+        "unit=px 但缺 page_size → 退出 2",
+        "cross-page 只给 page_end 或 bbox_end 之一 → 退出 2",
+        "区域内无文本且未加 --ocr → 标「待核」并保留裁图，不冒充已识别",
+        "--suggest 找不到任何题号 → 退出 1，改用 --template 手填",
+        "图片没有文本层且未加 --ocr → 退出 2"
+      ]
+    },
+    {
+      "id": "review-schedule",
+      "name": "FSRS 复习排期",
+      "entry": "scripts/review_schedule.py",
+      "reference": "references/knowledge-base.md",
+      "inputs": ["records/reviews.jsonl 复习历史", "records/cards.jsonl 卡片清单", "可选评分 CARD:1-4"],
+      "outputs": ["每张卡的 state/stability/difficulty/due/interval_days/overdue_days", "模拟评分后的下次到期", "可选追加的 REV 记录"],
+      "failure_modes": [
+        "学习库不存在 → 退出 2",
+        "rating 不在 1–4 或 --grade 格式错 → 退出 2",
+        "未装 fsrs → 自动降级四档阶梯并提示；显式 --engine fsrs 则退出 3",
+        "--record 指向 cards.jsonl 中不存在的卡 → 退出 2，不写孤儿记录"
+      ]
+    },
+    {
+      "id": "route",
+      "name": "说法 → 入口路由",
+      "entry": "scripts/route.py",
+      "reference": "references/capabilities.json",
+      "inputs": ["用户原话", "evals/routing.jsonl 路由回归集"],
+      "outputs": ["top-3 意图与入口路径", "top1/top3 命中率"],
+      "failure_modes": [
+        "没有命中任何意图 → 仍返回 top-3 低分候选，交模型判断",
+        "评测低于 top1 85% 或 top3 95% → run_checks 的 routing_eval FAIL",
+        "评测用例的 expect 指向不存在文件 → 直接 FAIL"
+      ]
+    },
+    {
+      "id": "lecture",
+      "name": "逐讲讲义与退出票",
+      "entry": "references/lecture-and-drill.md",
+      "inputs": ["知识地图节点", "考纲要求", "资料检索结果"],
+      "outputs": ["讲义笔记", "渐隐练习", "退出票结果"],
+      "failure_modes": [
+        "退出票未过 → 标待补，不推进新内容",
+        "引用不可回指 → 删除该引用",
+        "超预算 → 按降级顺序砍任务"
+      ]
+    },
+    {
+      "id": "step-verify",
+      "name": "逐步符号验算",
+      "entry": "scripts/step_check.py",
+      "reference": "references/output-contract.md",
+      "inputs": ["逐步表达式链", "变量与极限点（可选）"],
+      "outputs": ["OK / LIMIT / UNKNOWN / FAIL", "首个不等价步骤"],
+      "failure_modes": [
+        "未装 sympy → 返回 UNKNOWN，标 [未验]",
+        "定义域变化 → 脚本不检查，需人工补",
+        "数值反例 → FAIL，回退改步骤"
+      ]
+    },
+    {
+      "id": "grade-and-attribute",
+      "name": "批改与错因归因",
+      "entry": "references/error-taxonomy.md",
+      "inputs": ["用户作答", "参考答案", "YAML rubric"],
+      "outputs": ["五类归因", "最小修复动作", "当场重做与变式"],
+      "failure_modes": [
+        "答案对但缺依据 → 不算通过",
+        "蒙对 → 记侥幸正确并加问一步",
+        "rubric 缺失 → 先补评分点再评"
+      ]
+    },
+    {
+      "id": "retrieval",
+      "name": "混合检索（BM25 + bigram 向量 + RRF）",
+      "entry": "scripts/kb_index.py",
+      "reference": "references/research.md",
+      "inputs": ["Markdown 学习库", "查询串（中文/公式）", "kind 过滤"],
+      "outputs": ["按相关度排序的片段与路径", "hit@k / MRR 评估"],
+      "failure_modes": [
+        "空库 → 返回 no match，转教材原文检索",
+        "BM25 无命中 → 降级 vector，再降级关键词",
+        "公式写法差异 → normalize_math 归一后再查",
+        "索引损坏 → 删除 .index 重建，不改 Markdown"
+      ]
+    },
+    {
+      "id": "notes-and-views",
+      "name": "卡片、错题与学情视图",
+      "entry": "scripts/kb_view.py",
+      "reference": "references/knowledge-base.md",
+      "inputs": ["records/cards.jsonl", "records/errors.jsonl", "records/reviews.jsonl", "records/events.jsonl", "records/sources.jsonl"],
+      "outputs": ["views/题型卡片.md", "views/易错点汇总.md", "views/学情快照.md", "views/双链反查.md"],
+      "failure_modes": [
+        "样本 < 5 → 只报证据数量，不报掌握度",
+        "views 被手改 → 下次生成覆盖，不算生效",
+        "JSONL 坏行 → 跳过并计数，不中断其余记录"
+      ]
+    },
+    {
+      "id": "backlinks",
+      "name": "双链反查",
+      "entry": "scripts/kb_view.py",
+      "reference": "references/knowledge-base.md",
+      "inputs": ["notes/ 与根目录 Markdown 中的 [[...]] 链接"],
+      "outputs": ["views/双链反查.md", "断链清单"],
+      "failure_modes": [
+        "目标不存在 → 标断链，不静默丢弃",
+        "链接写成标题文字 → 改名提醒，改用文件 ID"
+      ]
+    },
+    {
+      "id": "confusion-stats",
+      "name": "高频困惑点统计",
+      "entry": "scripts/kb_stats.py",
+      "reference": "references/knowledge-base.md",
+      "inputs": ["records/confusions.jsonl", "top N"],
+      "outputs": ["views/高频困惑点统计.md", "按累计追问排序的表格"],
+      "failure_modes": [
+        "空文件或无记录 → 输出空表，不报错",
+        "坏行 → 跳过并计数，不中断其余记录",
+        "输出目录不存在 → 自动创建"
+      ]
+    },
+    {
+      "id": "export-book",
+      "name": "导出习题册",
+      "entry": "scripts/export_book.py",
+      "reference": "references/knowledge-base.md",
+      "inputs": ["records/cards.jsonl", "records/errors.jsonl", "考点关键词"],
+      "outputs": ["题目区 + 答案区的 Markdown/HTML", "可打印 HTML（浏览器另存 PDF）"],
+      "failure_modes": [
+        "无卡片 → 输出空册并提示先积累卡片",
+        "关键词无命中 → 输出空册，不自动放宽筛选"
+      ]
+    },
+    {
+      "id": "kb-health",
+      "name": "学习库体检",
+      "entry": "scripts/kb_health.py",
+      "reference": "references/knowledge-base.md",
+      "inputs": ["学习库目录"],
+      "outputs": ["按 error/warn/info 分级的问题清单"],
+      "failure_modes": [
+        "ID 重复或断号 → error",
+        "引用指向不存在对象 → error",
+        "schema 缺 version → warn"
+      ]
+    },
+    {
+      "id": "explain-lint",
+      "name": "讲题稿与追问稿结构检查",
+      "entry": "scripts/explain_lint.py",
+      "reference": "references/lecture-and-drill.md",
+      "inputs": ["Markdown 讲题稿或追问稿", "--level solution|followup|both", "可选 --require-frontmatter"],
+      "outputs": ["缺失段落清单", "易错点条数/表格行数/视角数", "PASS/FAIL 与退出码"],
+      "failure_modes": [
+        "讲题稿缺七段之一 → 退出 1，不算成稿",
+        "易错点少于 3 条或验算无表格/特殊值 → 退出 1",
+        "追问稿少于两个视角或缺数值验证表 → 退出 1",
+        "文件不可读 → 退出 2",
+        "出现「显然/易得」→ 仅警告，不判失败"
+      ]
+    },
+    {
+      "id": "acceptance",
+      "name": "技能自验收",
+      "entry": "scripts/run_checks.py",
+      "reference": "checks.json",
+      "inputs": ["skill 根目录", "可选学习库"],
+      "outputs": ["逐项 PASS/FAIL/SKIP", "退出码"],
+      "failure_modes": [
+        "checks.json 与实现不一致 → FAIL",
+        "依赖缺失（如 sympy）→ SKIP 并标 info",
+        "任一 error 级检查失败 → 退出码 1"
+      ]
+    }
+  ]
+}

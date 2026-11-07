@@ -1,0 +1,2 @@
+{"paper": "MID-2025A", "no": "2", "page_start": 2, "page_end": 2, "stem": "证明中值定理。", "type": "证明", "points": 10, "source": "text-layer", "conf": 0.97, "flags": [], "concepts": ["中值定理"], "textbook_ref": "第1章 1.2 函数极限", "difficulty": "中"}
+{"paper": "MID-2025A", "no": "4", "page_start": 4, "page_end": 4, "stem": "讨论函数连续性。", "type": "计算", "points": 8, "source": "text-layer", "conf": 0.96, "flags": [], "concepts": ["连续"], "textbook_ref": "第1章 1.4 连续", "difficulty": "基础"}
