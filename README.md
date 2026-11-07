@@ -2,7 +2,7 @@
 
 > 一个可以直接加载进 Agent 的备考 Skill：把教材、考纲、真题变成一条可恢复的「诊断—讲—例—练—测—复习」流水线。
 
-![checks](https://img.shields.io/badge/checks-26%2F26-brightgreen)
+![checks](https://img.shields.io/badge/checks-27%2F27-brightgreen)
 ![python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![deps](https://img.shields.io/badge/core%20deps-stdlib--only-lightgrey)
 
@@ -87,6 +87,14 @@ flowchart LR
 
 写完跑 `scripts/explain_lint.py`：缺段、易错点少于 3 条、追问少于两个视角、没有数值验证表，都会退出 1。结构不合格不算成稿。
 
+用户要「更优解 / 一题多解 / 搜一下 B 站」时，先做一轮解法检索（本地库 → 教材 → StackExchange / arXiv → B 站 → 社区），再输出：
+
+```text
+常规解法（必须排第一） → 多解对比表（解法/关键步骤/适用/耗时/风险/验算）→ 验算 → 来源 → 一句话选择建议
+```
+
+替代解法最多两种，每种都要能复现、能验算、有失效条件；来源给 URL + 访问日期，没联网就写「未外部检索」。多解稿跑 `explain_lint.py --level multi`，缺常规解法、对比表、验算或来源都会退出 1。协议见 [references/solution-research.md](references/solution-research.md)。
+
 ### 4. 批改、记忆与复习
 
 - 五类错因：概念 / 运算 / 表述 / 方法选择 / 审题。
@@ -149,6 +157,8 @@ Skill 会先收「主教材 / 考纲 / 考试信息」三件套，再按三层�
 | 这题我没有思路，先别告诉我完整解法 | 五级提示，从最低级开始 |
 | 这题讲完帮我检查讲题稿七段有没有缺 | `explain_lint.py` 结构检查 |
 | 追问稿只有一种推导，够不够深 | 追问三层检查 |
+| 这题有没有更优解，去 B 站搜一下 | 检索并并列常规解法与替代解法 |
+| 同时给我常规解法和两种巧解 | 多解对比表 + 验算 + 来源 |
 | 我这张卡什么时候再复习 | 回放复习历史算 FSRS 到期 |
 | 分析一下这份真题卷都考了什么，分值怎么分布 | 整卷报告 |
 | 把错题导出成能打印的册子 | 习题册导出 |
@@ -173,10 +183,11 @@ Skill 会先收「主教材 / 考纲 / 考试信息」三件套，再按三层�
 ```text
 study-coach/
 ├── SKILL.md                 # 技能入口：触发语、主循环、硬规则、完成标准
-├── checks.json              # 26 项验收清单
-├── references/              # 8 份协议文档 + capabilities.json（24 项能力契约）
+├── checks.json              # 27 项验收清单
+├── references/              # 9 份协议文档 + capabilities.json（25 项能力契约）
 │   ├── source-layers.md     # 资料分层、冲突裁决、缺口检测
 │   ├── lecture-and-drill.md # 九步讲义循环、七段讲题、三层追问
+│   ├── solution-research.md # 解法检索、多解对比、来源与降级
 │   ├── paper-intake.md      # 试卷导入、切题、质量门
 │   ├── error-taxonomy.md    # 五类错因、变式协议、对比式评分
 │   ├── knowledge-base.md    # 三平面存储、卡片、掌握度、复习
@@ -186,7 +197,7 @@ study-coach/
 ├── scripts/                 # 20 个可执行脚本
 ├── subjects/calculus/       # 学科插件：考纲、渲染、题型、误解库、术语
 ├── 知识库模板/              # 可直接复制的学习库骨架，含示例讲义与记录
-├── evals/                   # 20 条行为用例、29 条检索、42 条路由、13 个 fixture
+├── evals/                   # 22 条行为用例、29 条检索、44 条路由、14 个 fixture
 └── agents/openai.yaml       # Agent 接口描述
 ```
 
@@ -206,10 +217,10 @@ python scripts/route.py --eval evals/routing.jsonl
 
 | 项目 | 数量 / 结果 |
 | --- | --- |
-| 验收检查 | 26 项，全部 PASS |
+| 验收检查 | 27 项，全部 PASS |
 | 可执行脚本 | 20 个 |
-| 能力契约 | 24 项，entry/reference 全部指向真实文件 |
-| 行为评测 | 20 条 |
+| 能力契约 | 25 项，entry/reference 全部指向真实文件 |
+| 行为评测 | 22 条 |
 | 检索评测 | 29 条真实问法，hybrid hit@5 全中 |
 | 路由回归 | top1 98%，top3 100% |
 | 真实学习库体检 | 无 error |

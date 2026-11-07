@@ -40,3 +40,5 @@
 {"id":"RT-40","input":"上次那道题我又错了，是不是根本没懂","expect":"references/error-taxonomy.md"}
 {"id":"RT-41","input":"这道题讲完帮我检查讲题稿七段有没有缺","expect":"scripts/explain_lint.py"}
 {"id":"RT-42","input":"追问稿只给了一种推导，够不够深","expect":"scripts/explain_lint.py"}
+{"id":"RT-43","input":"这题除了通法还有没有更优解，去B站搜一下","expect":"references/solution-research.md"}
+{"id":"RT-44","input":"能不能同时给我常规解法和两种巧解","expect":"references/solution-research.md"}

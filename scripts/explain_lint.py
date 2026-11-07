@@ -10,10 +10,15 @@ followup (five parts):
   问题 / 一句话结论 / at least two 视角 (or 推导/证明) / 数值验证 with a table /
   one comparison table / closing 一句话总结
 
+multi (multi-solution note):
+  题目 / 常规解法 / 多解对比 (table with >=2 solutions and a 适用 column) /
+  验算 / 来源 (URL + 访问 date, or 未外部检索) / 一句话总结
+
 Usage:
   python explain_lint.py note.md
   python explain_lint.py note.md --level solution --require-frontmatter --json
   python explain_lint.py note.md --level followup
+  python explain_lint.py note.md --level multi
 
 Exit codes: 0 pass; 1 missing parts or not deep enough; 2 unreadable file.
 """
@@ -135,12 +140,67 @@ def check_followup(text: str) -> dict:
     return {"ok": not missing, "missing": missing, "stats": stats}
 
 
+def check_multi(text: str) -> dict:
+    missing: list[str] = []
+    stats: dict[str, int] = {}
+
+    if not has_bold(text, "题目") and not section(text, ("题目", "题面")):
+        missing.append("题目")
+
+    standard = section(text, ("常规解法", "通法", "标准解法"))
+    if not standard:
+        missing.append("常规解法")
+    elif len(standard.strip()) < 30:
+        missing.append("常规解法过短")
+
+    compare = section(text, ("多解对比", "一题多解", "解法对比"))
+    if not compare:
+        missing.append("多解对比")
+    else:
+        rows = table_rows(compare)
+        stats["对比表行数"] = rows
+        if rows < 4:
+            missing.append("多解对比表至少 2 种解法")
+        header = next((line for line in compare.splitlines()
+                       if line.strip().startswith("|")), "")
+        for word in ("解法", "适用"):
+            if word not in header:
+                missing.append(f"多解对比表缺「{word}」列")
+        if not any(word in compare for word in ("常规", "通法", "标准")):
+            missing.append("多解对比未标出常规解法")
+        if not any(word in compare for word in ("巧解", "另解", "解法二", "第二", "替代")):
+            missing.append("多解对比未给替代解法")
+
+    check = section(text, ("验算", "验证", "特殊值"))
+    if not check:
+        missing.append("验算")
+    elif table_rows(check) < 1 and not re.search(r"(≈|代入|取点|端点)", check):
+        missing.append("验算：缺表格或特殊值检查")
+
+    source = section(text, ("来源", "检索来源", "参考来源"))
+    if not source:
+        missing.append("来源")
+    else:
+        has_url = bool(re.search(r"https?://", source))
+        if not has_url and "未外部检索" not in source:
+            missing.append("来源：缺链接或「未外部检索」声明")
+        if has_url and "访问" not in source:
+            missing.append("来源：链接缺访问日期")
+
+    if not any("一句话" in t or "总结" in t for _, t in headings(text)):
+        missing.append("一句话总结")
+
+    return {"ok": not missing, "missing": missing, "stats": stats}
+
+
 def run(text: str, level: str, require_frontmatter: bool) -> dict:
     levels: dict[str, dict] = {}
     if level in ("solution", "both"):
         levels["solution"] = check_solution(text)
     if level in ("followup", "both"):
         levels["followup"] = check_followup(text)
+    if level == "multi":
+        levels["multi"] = check_multi(text)
 
     missing = [item for name, result in levels.items()
                for item in result["missing"]]
@@ -168,7 +228,7 @@ def detect(text: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path", help="Markdown 讲题稿或追问稿")
-    parser.add_argument("--level", choices=["auto", "solution", "followup", "both"],
+    parser.add_argument("--level", choices=["auto", "solution", "followup", "multi", "both"],
                         default="auto")
     parser.add_argument("--require-frontmatter", action="store_true",
                         help="notes/*.md 成稿必须带 id/type/source/status/confidence")

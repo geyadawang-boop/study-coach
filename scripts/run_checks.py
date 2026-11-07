@@ -55,6 +55,7 @@ REQUIRED = [
     "scripts/explain_lint.py",
     "evals/fixtures/explain-solution-good.md",
     "evals/fixtures/explain-followup-good.md",
+    "evals/fixtures/explain-multi-good.md",
     "scripts/export_book.py",
     "scripts/intake_check.py",
     "scripts/run_checks.py",
@@ -351,6 +352,7 @@ def check_explain_lint(root: Path) -> list[dict]:
     cases = [
         ("讲题稿好样例", "evals/fixtures/explain-solution-good.md", "solution"),
         ("追问稿好样例", "evals/fixtures/explain-followup-good.md", "followup"),
+        ("多解稿好样例", "evals/fixtures/explain-multi-good.md", "multi"),
     ]
     for label, rel, level in cases:
         proc = subprocess.run(
@@ -377,6 +379,10 @@ def check_explain_lint(root: Path) -> list[dict]:
          r"##\s*[^\n]*易错点[^\n]*\n.*?(?=##\s*[^\n]*一句话)", "易错点"),
         ("缺视角的追问稿", "evals/fixtures/explain-followup-good.md", "followup",
          r"##\s*视角\s*2.*?(?=##\s*数值验证)", "视角"),
+        ("缺来源的多解稿", "evals/fixtures/explain-multi-good.md", "multi",
+         r"##\s*[^\n]*来源[^\n]*\n.*?(?=##\s*[^\n]*一句话)", "来源"),
+        ("缺验算的多解稿", "evals/fixtures/explain-multi-good.md", "multi",
+         r"##\s*[^\n]*验算[^\n]*\n.*?(?=##\s*[^\n]*来源)", "验算"),
     ]
     for label, rel, level, pattern, needle in negative:
         text = (root / rel).read_text(encoding="utf-8")
@@ -403,6 +409,26 @@ def check_explain_lint(root: Path) -> list[dict]:
             out.append(finding(
                 "error", f"{label}未报告「{needle}」：{data.get('missing')}",
             ))
+    return out
+
+
+def check_solution_research(root: Path) -> list[dict]:
+    out: list[dict] = []
+    doc = root / "references/solution-research.md"
+    if not doc.is_file():
+        return [finding("error", "缺文件：references/solution-research.md")]
+    text = doc.read_text(encoding="utf-8", errors="replace")
+    for needle in ("什么时候检索", "检索顺序", "多解对比", "未外部检索",
+                   "explain_lint.py", "--level multi"):
+        if needle not in text:
+            out.append(finding("error", f"solution-research.md 缺「{needle}」"))
+    skill = root / "SKILL.md"
+    if not skill.is_file():
+        return out + [finding("error", "缺文件：SKILL.md")]
+    skill_text = skill.read_text(encoding="utf-8", errors="replace")
+    for needle in ("多解必须验算", "references/solution-research.md"):
+        if needle not in skill_text:
+            out.append(finding("error", f"SKILL.md 缺「{needle}」"))
     return out
 
 
@@ -1510,6 +1536,7 @@ CHECKS = {
     "review_schedule": lambda root, kb: check_review_schedule(root),
     "step_check": lambda root, kb: check_step_check(root),
     "explain_lint": lambda root, kb: check_explain_lint(root),
+    "solution_research": lambda root, kb: check_solution_research(root),
     "render_rules": lambda root, kb: check_render_rules(root),
     "export_and_backlinks": lambda root, kb: check_export_and_backlinks(root),
     "confusion_stats": lambda root, kb: check_confusion_stats(root),

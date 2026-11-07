@@ -245,6 +245,16 @@ INTENTS = [
         "keys": ["验算", "等价", "sympy"],
     },
     {
+        "id": "solution-research",
+        "entry": "references/solution-research.md",
+        "phrases": [
+            "这题有没有更优解", "一题多解搜一下别人怎么解",
+            "去B站找这道题的巧解", "同时给我常规解法和多种解法",
+            "这题在StackExchange上怎么解",
+        ],
+        "keys": ["更优解", "多解", "巧解", "B站", "多种解法"],
+    },
+    {
         "id": "explain-lint",
         "entry": "scripts/explain_lint.py",
         "phrases": [

@@ -104,7 +104,12 @@
     {
       "id": "explain_lint",
       "level": "error",
-      "desc": "explain_lint.py 校验讲题稿七段与追问稿三层：好样例 PASS，缺易错点或缺视角退出 1"
+      "desc": "explain_lint.py 校验讲题稿七段、追问稿三层与多解稿：好样例 PASS，缺易错点/视角/来源退出 1"
+    },
+    {
+      "id": "solution_research",
+      "level": "error",
+      "desc": "解法检索协议齐全：solution-research.md 含检索顺序、多解表、未外部检索降级与质量门；SKILL.md 含多解必须验算与入口"
     },
     {
       "id": "render_rules",
