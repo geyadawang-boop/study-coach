@@ -17,6 +17,7 @@ import argparse
 import json
 import py_compile
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -59,6 +60,9 @@ REQUIRED = [
     "scripts/export_book.py",
     "scripts/intake_check.py",
     "scripts/web_search.py",
+    "scripts/export_cards.py",
+    "scripts/session_digest.py",
+    "scripts/export_anki.py",
     "evals/fixtures/search-brave.html",
     "evals/fixtures/search-yahoo.html",
     "evals/fixtures/search-challenge.html",
@@ -424,7 +428,8 @@ def check_solution_research(root: Path) -> list[dict]:
     text = doc.read_text(encoding="utf-8", errors="replace")
     for needle in ("什么时候检索", "检索顺序", "多解对比", "未外部检索",
                    "explain_lint.py", "--level multi", "web_search.py",
-                   "--include-domains", "apiKeyUsed=false"):
+                   "--include-domains", "apiKeyUsed=false",
+                   "StackExchange 不做首选", "先译成英文关键词"):
         if needle not in text:
             out.append(finding("error", f"solution-research.md 缺「{needle}」"))
     skill = root / "SKILL.md"
@@ -432,7 +437,7 @@ def check_solution_research(root: Path) -> list[dict]:
         return out + [finding("error", "缺文件：SKILL.md")]
     skill_text = skill.read_text(encoding="utf-8", errors="replace")
     for needle in ("多解必须验算", "references/solution-research.md",
-                   "检索先跑脚本", "scripts/web_search.py"):
+                   "检索先跑脚本", "scripts/web_search.py", "StackExchange 必须先用英文关键词"):
         if needle not in skill_text:
             out.append(finding("error", f"SKILL.md 缺「{needle}」"))
     return out
@@ -497,6 +502,274 @@ def check_web_search(root: Path) -> list[dict]:
             "error",
             f"反爬样例未按 challenge-detected 退出 2：code={code} reason={data.get('firstFailureReason')}",
         ))
+    return out
+
+
+def check_obsidian_cards(root: Path) -> list[dict]:
+    """Obsidian 每卡一文件：语法、幂等、文件名稳定、孤儿只报不删。"""
+    out: list[dict] = []
+    script = root / "scripts/export_cards.py"
+    template = root / "知识库模板"
+    if not script.is_file():
+        return [finding("error", "缺文件：scripts/export_cards.py")]
+    if not template.is_dir():
+        return [finding("error", "缺目录：知识库模板")]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        kb = Path(tmp) / "kb"
+        shutil.copytree(template, kb)
+
+        def run(extra: list[str]) -> tuple[int, dict | None, str]:
+            proc = subprocess.run(
+                [sys.executable, str(script), "--kb", str(kb), "--json", *extra],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+            try:
+                return proc.returncode, json.loads(proc.stdout), ""
+            except json.JSONDecodeError:
+                return proc.returncode, None, (proc.stdout or proc.stderr).strip()[:160]
+
+        code, data, err = run([])
+        if data is None:
+            return out + [finding("error", f"export_cards 输出不是 JSON：{err}")]
+        if code != 0 or not data.get("created"):
+            out.append(finding("error", f"首次导出未建卡：code={code} raw={err}"))
+        cards = sorted((kb / "notes/cards").glob("CARD-*.md"))
+        if len(cards) != 1:
+            out.append(finding("error", f"每卡一文件不成立：找到 {len(cards)} 个文件"))
+        else:
+            text = cards[0].read_text(encoding="utf-8")
+            for needle in ("id: CARD-0001", "\n?\n", "#review", "有理化"):
+                if needle not in text:
+                    out.append(finding("error", f"卡片缺「{needle.strip() or needle}」"))
+            if "views" in cards[0].as_posix():
+                out.append(finding("error", "卡片被写进 views/，重建会丢复习进度"))
+
+        first_name = cards[0].name if cards else ""
+        code, data, err = run([])
+        if data is None:
+            out.append(finding("error", f"重跑输出不是 JSON：{err}"))
+        else:
+            if data.get("created"):
+                out.append(finding("error", "重跑又建了新文件，导出不幂等"))
+            if int(data.get("unchanged") or 0) < 1:
+                out.append(finding("error", "重跑未命中 unchanged，内容在抖动"))
+        if cards and len(list((kb / "notes/cards").glob("CARD-*.md"))) != 1:
+            out.append(finding("error", "重跑后卡片文件数量变化"))
+
+        cards_file = kb / "records/cards.jsonl"
+        rows = [json.loads(line) for line in cards_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+        rows[0]["title"] = "改名后的标题"
+        cards_file.write_text(
+            "\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8"
+        )
+        code, data, err = run([])
+        renamed = sorted((kb / "notes/cards").glob("CARD-*.md"))
+        if len(renamed) != 1 or renamed[0].name != first_name:
+            out.append(finding("error", "标题变化后文件名变了，Obsidian 复习进度会清零"))
+        elif "改名后的标题" not in renamed[0].read_text(encoding="utf-8"):
+            out.append(finding("error", "标题变化后内容没更新"))
+
+        cards_file.write_text("", encoding="utf-8")
+        code, data, err = run([])
+        if data is None:
+            out.append(finding("error", f"空卡片库输出不是 JSON：{err}"))
+        elif not data.get("orphans"):
+            out.append(finding("error", "源记录删除后未报孤儿卡片"))
+        if renamed and not renamed[0].is_file():
+            out.append(finding("error", "孤儿卡片被自动删除了，应只报不删"))
+
+    for rel, needles in (
+        ("references/knowledge-base.md", ("export_cards.py", "每张卡一个文件", "reviews.jsonl")),
+        ("SKILL.md", ("scripts/export_cards.py",)),
+    ):
+        path = root / rel
+        if not path.is_file():
+            out.append(finding("error", f"缺文件：{rel}"))
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for needle in needles:
+            if needle not in text:
+                out.append(finding("error", f"{rel} 缺「{needle}」"))
+    return out
+
+
+def check_session_digest(root: Path) -> list[dict]:
+    """开场摘要：字数上限、截断标记、只读指针与记录、缺库退出 2。"""
+    out: list[dict] = []
+    script = root / "scripts/session_digest.py"
+    template = root / "知识库模板"
+    if not script.is_file():
+        return [finding("error", "缺文件：scripts/session_digest.py")]
+    if not template.is_dir():
+        return [finding("error", "缺目录：知识库模板")]
+
+    def run(kb: Path, extra: list[str]) -> tuple[int, dict | None, str]:
+        proc = subprocess.run(
+            [sys.executable, str(script), "--kb", str(kb), "--json", *extra],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        try:
+            return proc.returncode, json.loads(proc.stdout), ""
+        except json.JSONDecodeError:
+            return proc.returncode, None, (proc.stdout or proc.stderr).strip()[:160]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        kb = Path(tmp) / "kb"
+        shutil.copytree(template, kb)
+
+        code, data, err = run(kb, [])
+        if data is None:
+            return out + [finding("error", f"session_digest 输出不是 JSON：{err}")]
+        if code != 0:
+            out.append(finding("error", f"摘要返回 {code}"))
+        digest = data.get("digest") or ""
+        if len(digest) > int(data.get("chars") or 0):
+            out.append(finding("error", "digest 长度与 chars 不一致"))
+        if int(data.get("chars") or 0) > 2000:
+            out.append(finding("error", f"默认摘要 {data.get('chars')} 字，超过 2000"))
+        for needle in ("进度指针", "复习", "未闭环错题"):
+            if needle not in digest:
+                out.append(finding("error", f"摘要缺「{needle}」"))
+        for rel in data.get("readFiles") or []:
+            if not (rel == "progress.md" or rel.startswith("records/")):
+                out.append(finding("error", f"摘要读了不该读的文件：{rel}"))
+        if not data.get("readFiles"):
+            out.append(finding("error", "摘要没有报告 readFiles"))
+
+        code, data, err = run(kb, ["--max-chars", "300"])
+        if data is None:
+            out.append(finding("error", f"截断模式输出不是 JSON：{err}"))
+        else:
+            if int(data.get("chars") or 0) > 300:
+                out.append(finding("error", f"截断后 {data.get('chars')} 字，超过 300"))
+            if not data.get("truncated"):
+                out.append(finding("error", "超限时没有标 truncated"))
+            if "已截断" not in (data.get("digest") or ""):
+                out.append(finding("error", "截断输出没有「已截断」提示"))
+
+    proc = subprocess.run(
+        [sys.executable, str(script), "--kb", str(Path(tmp) / "missing")],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if proc.returncode != 2:
+        out.append(finding("error", f"缺学习库未退出 2：{proc.returncode}"))
+
+    skill = root / "SKILL.md"
+    if skill.is_file():
+        text = skill.read_text(encoding="utf-8", errors="replace")
+        if "scripts/session_digest.py" not in text:
+            out.append(finding("error", "SKILL.md 缺 scripts/session_digest.py"))
+    return out
+
+
+def check_anki_export(root: Path) -> list[dict]:
+    """Anki TSV：文件头、GUID 稳定、HTML 转义、重跑幂等、retired 默认跳过。"""
+    out: list[dict] = []
+    script = root / "scripts/export_anki.py"
+    template = root / "知识库模板"
+    if not script.is_file():
+        return [finding("error", "缺文件：scripts/export_anki.py")]
+    if not template.is_dir():
+        return [finding("error", "缺目录：知识库模板")]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        kb = Path(tmp) / "kb"
+        shutil.copytree(template, kb)
+
+        def run(extra: list[str]) -> tuple[int, dict | None, str]:
+            proc = subprocess.run(
+                [sys.executable, str(script), "--kb", str(kb), "--json", *extra],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+            try:
+                return proc.returncode, json.loads(proc.stdout), ""
+            except json.JSONDecodeError:
+                return proc.returncode, None, (proc.stdout or proc.stderr).strip()[:160]
+
+        tsvi = kb / "views/anki-cards.tsv"
+        code, data, err = run([])
+        if data is None:
+            return out + [finding("error", f"export_anki 输出不是 JSON：{err}")]
+        if code != 0 or data.get("exported") != 1:
+            out.append(finding("error", f"模板库导出异常：code={code} exported={data.get('exported')}"))
+        if not tsvi.is_file():
+            return out + [finding("error", "没有生成 views/anki-cards.tsv")]
+
+        lines = tsvi.read_text(encoding="utf-8").splitlines()
+        for header in ("#separator:tab", "#html:true", "#notetype column:5",
+                       "#deck column:4", "#tags column:3", "#guid column:6"):
+            if header not in lines[:8]:
+                out.append(finding("error", f"缺文件头 {header}"))
+        rows = [line for line in lines if line and not line.startswith("#")]
+        if len(rows) != 1:
+            out.append(finding("error", f"应有 1 行卡片，实际 {len(rows)}"))
+        else:
+            fields = rows[0].split("\t")
+            if len(fields) != 6:
+                out.append(finding("error", f"列数应为 6，实际 {len(fields)}"))
+            if fields[-1] != "CARD-0001":
+                out.append(finding("error", f"GUID 列不是 CARD-0001：{fields[-1]}"))
+            if "<b>方法</b>" not in fields[1]:
+                out.append(finding("error", "背面的步骤/方法没有渲染成 HTML"))
+
+        cards_file = kb / "records/cards.jsonl"
+        base = [json.loads(line) for line in cards_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+        base.append({
+            "id": "CARD-0002", "type": "陷阱", "title": "<b>转义</b>\t测试",
+            "signal": "含 <tag> 与\t制表符", "method": "第一行\n第二行",
+            "steps": ["步骤 A", "步骤 B"], "boundary": "无", "status": "hypothesis",
+        })
+        base.append({
+            "id": "CARD-0003", "type": "定义", "title": "退役卡",
+            "method": "旧", "status": "retired",
+        })
+        cards_file.write_text(
+            "\n".join(json.dumps(r, ensure_ascii=False) for r in base) + "\n", encoding="utf-8"
+        )
+        code, data, err = run([])
+        if data is None or code != 0:
+            out.append(finding("error", f"追加卡片后导出失败：{err}"))
+        else:
+            if data.get("exported") != 2:
+                out.append(finding("error", f"默认应导出 2 张，实际 {data.get('exported')}"))
+            if data.get("retiredSkipped") != 1:
+                out.append(finding("error", "retired 卡片没有被默认跳过"))
+        rows = [line for line in tsvi.read_text(encoding="utf-8").splitlines()
+                if line and not line.startswith("#")]
+        if len(rows) != 2:
+            out.append(finding("error", f"retired 过滤后应有 2 行，实际 {len(rows)}"))
+        else:
+            second = rows[1].split("\t")
+            if len(second) != 6:
+                out.append(finding("error", "含制表符的标题破坏了列数"))
+            if "<b>转义</b>" in rows[1]:
+                out.append(finding("error", "标题里的 HTML 没被转义"))
+            if "&lt;b&gt;转义&lt;/b&gt;" not in rows[1]:
+                out.append(finding("error", "标题转义结果不对"))
+            if "\n" in rows[1] or "\r" in rows[1]:
+                out.append(finding("error", "字段里残留换行"))
+
+        before = tsvi.read_text(encoding="utf-8")
+        code, data, err = run([])
+        if tsvi.read_text(encoding="utf-8") != before:
+            out.append(finding("error", "重跑导出内容不一致，不幂等"))
+        code, data, err = run(["--all"])
+        if data is None or data.get("exported") != 3:
+            out.append(finding("error", "--all 应导出 3 张（含 retired）"))
+
+    for rel, needles in (
+        ("references/knowledge-base.md", ("export_anki.py", "Anki")),
+        ("SKILL.md", ("scripts/export_anki.py",)),
+    ):
+        path = root / rel
+        if not path.is_file():
+            out.append(finding("error", f"缺文件：{rel}"))
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for needle in needles:
+            if needle not in text:
+                out.append(finding("error", f"{rel} 缺「{needle}」"))
     return out
 
 
@@ -1652,6 +1925,9 @@ CHECKS = {
     "explain_lint": lambda root, kb: check_explain_lint(root),
     "solution_research": lambda root, kb: check_solution_research(root),
     "web_search": lambda root, kb: check_web_search(root),
+    "obsidian_cards": lambda root, kb: check_obsidian_cards(root),
+    "anki_export": lambda root, kb: check_anki_export(root),
+    "session_digest": lambda root, kb: check_session_digest(root),
     "privacy": lambda root, kb: check_privacy(root),
     "render_rules": lambda root, kb: check_render_rules(root),
     "export_and_backlinks": lambda root, kb: check_export_and_backlinks(root),

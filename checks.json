@@ -117,6 +117,21 @@
       "desc": "web_search.py 解析 Brave/Yahoo 结果、解出真实 URL、域名过滤与字符预算生效、反爬退出 2、全程不声明使用 key"
     },
     {
+      "id": "obsidian_cards",
+      "level": "error",
+      "desc": "export_cards.py 每卡一文件导出到 notes/cards、多行 ? 卡与 #review 齐全、重跑幂等、标题变化不改名、孤儿卡片只报不删"
+    },
+    {
+      "id": "session_digest",
+      "level": "error",
+      "desc": "session_digest.py 摘要受字符上限约束、超限截断、只读 progress.md 与 records 不读 notes，缺学习库退出 2"
+    },
+    {
+      "id": "anki_export",
+      "level": "error",
+      "desc": "export_anki.py 生成 Anki 2.1.54+ 文件头、GUID 稳定去重、HTML 转义、retired 默认跳过、重跑幂等"
+    },
+    {
       "id": "privacy",
       "level": "error",
       "desc": "公开仓库前扫描：无私钥/API key/token、无本机绝对路径、无个人邮箱（noreply/example 例外）"

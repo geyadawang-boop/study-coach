@@ -343,6 +343,52 @@
       ]
     },
     {
+      "id": "obsidian-cards",
+      "name": "卡片导出为 Obsidian 每卡一文件",
+      "entry": "scripts/export_cards.py",
+      "reference": "references/knowledge-base.md",
+      "inputs": ["records/cards.jsonl", "可选 --out 目录", "可选 --all 含 retired"],
+      "outputs": ["notes/cards/CARD-xxxx-标题.md（frontmatter + 多行 `?` 卡 + #review）",
+                  "created/updated/unchanged/orphans 计数"],
+      "failure_modes": [
+        "学习库不存在 → 退出 2",
+        "卡片缺 id 或 JSON 坏行 → 跳过并计数，不静默吞掉",
+        "源记录删除后旧卡保留 → 报 orphans，不自动删",
+        "标题变化 → 沿用已有文件名，避免 Obsidian 复习进度清零"
+      ]
+    },
+    {
+      "id": "anki-export",
+      "name": "卡片导出为 Anki 可导入 TSV",
+      "entry": "scripts/export_anki.py",
+      "reference": "references/knowledge-base.md",
+      "inputs": ["records/cards.jsonl", "可选 --deck / --notetype", "可选 --all 含 retired"],
+      "outputs": ["views/anki-cards.tsv（六行文件头 + 六列字段）",
+                  "exported/retiredSkipped/incomplete 计数"],
+      "failure_modes": [
+        "学习库不存在 → 退出 2",
+        "字段含制表符或换行 → 退出 2，不写出会错列的 TSV",
+        "retired 卡片默认跳过，--all 才导出",
+        "卡片内容为空 → 背面写「待补」并列入 incomplete，不编内容"
+      ]
+    },
+    {
+      "id": "session-digest",
+      "name": "会话开场摘要（上下文浓缩）",
+      "entry": "scripts/session_digest.py",
+      "reference": "references/knowledge-base.md",
+      "inputs": ["progress.md 指针", "records/events|reviews|errors|cards|confusions.jsonl",
+                 "回看天数 --days", "字符上限 --max-chars"],
+      "outputs": ["≤ 上限的 markdown 摘要：进度指针/最近事件/复习/错题/待验证卡/高频困惑",
+                  "readFiles 清单（证明未读 notes/）"],
+      "failure_modes": [
+        "学习库不存在 → 退出 2",
+        "progress.md 缺失 → 提示按新会话处理，不编进度",
+        "记录文件缺失或坏行 → 跳过并计数，不报假数据",
+        "超出字数上限 → 截断并标「已截断」，不静默丢段"
+      ]
+    },
+    {
       "id": "acceptance",
       "name": "技能自验收",
       "entry": "scripts/run_checks.py",

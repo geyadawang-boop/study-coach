@@ -22,7 +22,7 @@ Skill 自带零 API Key 检索脚本，不依赖宿主是否开放搜索工具�
 ```bash
 python scripts/web_search.py "tanx-sinx/x^3 一题多解" \
   --include-domains bilibili.com,math.stackexchange.com,arxiv.org \
-  --preferred-domains math.stackexchange.com,bilibili.com \
+  --preferred-domains bilibili.com,math.stackexchange.com \
   --max-results 5 --min-results 2 --timeout 60 --max-chars 2800
 ```
 
@@ -41,11 +41,14 @@ python scripts/web_search.py "tanx-sinx/x^3 一题多解" \
 | --- | --- | --- | --- |
 | 1 | 本地学习库 | `kb_index.py search`，再回读笔记与教材页 | 最高，优先 |
 | 2 | 教材/真题答案 | 按 `sources.jsonl` 的页码回读 | 高 |
-| 3 | 学术问答 | Math StackExchange、arXiv、Google Scholar、DOI 页面 | 高，需看推导 |
-| 4 | 视频平台 | B 站搜索标题/简介/字幕；可用 `bilibili-source` 类工具取元数据与字幕 | 中，讲法可参考，结论必须验算 |
-| 5 | 中文社区/博客 | 知乎、CSDN、公众号 | 低，只作线索 |
+| 3 | 中文视频平台 | B 站搜「题目关键词 + 一题多解 / 巧解 / 秒杀」；可用 `bilibili-source` 类工具取元数据与字幕 | 中，讲法可参考，结论必须验算 |
+| 4 | StackExchange | **必须先把题干关键词译成英文**再搜；只取有推导与评论纠错的问题页 | 中高，只作验算与反例 |
+| 5 | arXiv / DOI | 只查定义、定理出处与标准证明 | 高但常超纲，标 `[拓展]` |
+| 6 | 中文社区/博客 | 知乎、CSDN、公众号 | 低，只作线索 |
 
-B 站检索建议用「题目关键词 + 一题多解 / 巧解 / 秒杀」，优先看有完整板书的视频；只有口播结论、没有步骤的不收。学术站点优先看有推导与评论纠错的问题页，不只看 accepted answer。
+**StackExchange 不做首选**：它按英文术语索引，中文题干直搜命中率低；内容偏标准论证，与国内考纲和教材体系也不一致。只有在需要标准推导、反例或英文术语对照时才用它，且结论只用于验算解法是否正确，不能当考纲依据。
+
+B 站优先看有完整板书、步骤可暂停复现的视频；只有口播结论、没有步骤的不收。学术站点优先看有推导与评论纠错的问题页，不只看 accepted answer。
 
 ## 查询模板
 
@@ -53,12 +56,13 @@ B 站检索建议用「题目关键词 + 一题多解 / 巧解 / 秒杀」，优
 <题目核心式> 一题多解
 <题目核心式> 巧解
 <题目核心式> site:bilibili.com
-<题目核心式> site:math.stackexchange.com
-<英文关键词> alternative solution
-<定理名> <题型> 最快解法
+<题目核心式> 秒杀
+<英文题干关键词> alternative solution
+<英文题干关键词> site:math.stackexchange.com
+<定理英文名> proof site:arxiv.org
 ```
 
-题目 core 只保留可检索的特征，例如「tanx-sinx/x^3 极限」，不要把整段中文题面塞进搜索框。
+题目 core 只保留可检索的特征，例如「tanx-sinx/x^3 极限」，不要把整段中文题面塞进搜索框。中文题面**不要**直接拼 `site:math.stackexchange.com`，先译成英文关键词，否则等于空转一轮。
 
 ## 每条候选解法的准入条件
 

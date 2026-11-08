@@ -95,7 +95,8 @@ description: "通用备考与学习教练，适用于任何有教材和考试的
 - **能验算就验算**：计算结果先用 `scripts/step_check.py` 或 SymPy 验；未验的结论标 `[未验]`，不判"正确"。
 - **讲题不留空段**：讲题稿七段、追问稿三层；写完跑 `scripts/explain_lint.py`，缺段不算成稿。追问不重复首讲，必须给数值或特殊值验证。
 - **多解必须验算**：并列多解时，常规解法排第一且必须完整；每种替代解法都要过 `step_check.py` 或特殊值验算，并写清适用与失效条件。来源给 URL + 访问日期；没联网就说「未外部检索」，不把模型记忆说成外部资料。
-- **检索先跑脚本**：要外部解法时先跑 `scripts/web_search.py`（Brave → Yahoo，零 API Key），读 `status` 与 `providerAttempts`；只有 `status=ok` 才算检索成功，遇到 `challenge-detected` / `timeout` / `no-results` / `filtered-out` 一律按「未外部检索」降级，并写清失败原因。
+- **检索先跑脚本**：要外部解法时先跑 `scripts/web_search.py`（Brave → Yahoo，零 API Key），读 `status` 与 `providerAttempts`；只有 `status=ok` 才算检索成功，遇到 `challenge-detected` / `timeout` / `no-results` / `filtered-out` 一律按「未外部检索」降级，并写清失败原因。检索顺序是本地库 → 教材/真题 → B 站 → StackExchange → arXiv；StackExchange 必须先用英文关键词，且只用于验算与反例，不作考纲依据。
+- **开场先浓缩**：新会话先跑 `scripts/session_digest.py`（默认 ≤ 2000 字，只读 `progress.md` 与 `records/*.jsonl`，不读 `notes/`），再按摘要里的指针取单篇；不整库读入，也不靠上下文记忆状态。上下文只能抑制、不能回收，关键状态必须每讲落到 `progress.md`。
 - **对话公式用 Unicode**：聊天窗按 CommonMark 渲染，不解析 `$...$` 与 `$$...$$`。对话里用 π、≤、→、x²，分数写 `a/b`，分段/多行放 `text` 代码块；`notes/*.md` 才用 LaTeX，两套不混写。
 - **引用可回指**：引用必须落到 `DOC#页码` 或 URL；指不到就删，不引用没打开过的资料。
 - **纠错回流**：用户指出讲错时，按"改笔记 → 新建卡片并 supersede → 补同考点题 → 记 AI 易错模式"四步处理，不静默改口。
@@ -119,6 +120,9 @@ description: "通用备考与学习教练，适用于任何有教材和考试的
 | 从页面文本/OCR 结果切出题目草稿（标待核与疑似边界） | `scripts/slice_questions.py` |
 | 多栏/跨页试卷：先自动提案题号区域，模型复核 bbox 后裁图逐区取文 | `scripts/page_regions.py --suggest`，复核后可 `--template` 手填 |
 | 复习排期：回放复习历史，算下次间隔与到期日 | `scripts/review_schedule.py` |
+| 把卡片导出成 Obsidian 每卡一文件（`::` 多行卡 + `#review`，路径稳定不丢复习进度） | `scripts/export_cards.py` |
+| 导出 Anki 可导入 TSV（GUID 去重、HTML 卡片，无需 AnkiConnect） | `scripts/export_anki.py` |
+| 新会话开场摘要：只看指针与记录，≤ 2000 字，不读整篇笔记 | `scripts/session_digest.py` |
 | 讲题稿/追问稿写完后的结构与深度检查（七段 / 三层） | `scripts/explain_lint.py` |
 | 用户要更优解/一题多解，或题目有多种主流方法：检索 B 站、StackExchange、arXiv 并做多解对比 | `references/solution-research.md` |
 | 需要真联网检索 B 站/学术站点（Brave → Yahoo，零 key、带预算与反爬识别） | `scripts/web_search.py` |

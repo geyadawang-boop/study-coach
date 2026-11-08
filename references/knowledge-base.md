@@ -296,3 +296,43 @@ python scripts/export_book.py --kb 学习库 --concept 极限 --format html
 同步顺序固定：先写本地 `records/` → 跑脚本生成 `views/` → 再推送副本。反过来会分叉。
 
 Obsidian 的双链约定：文件名带 ID（如 `LEC-003-无穷小比较.md`），链卡片用 `[[CARD-0007]]` 这类 ID，不链标题文字，避免改名断链。
+
+### Obsidian 复习卡（每卡一文件）
+
+`records/cards.jsonl` 用 `export_cards.py` 导出：
+
+```bash
+python scripts/export_cards.py --kb 学习库
+python scripts/export_cards.py --kb 学习库 --all --json
+```
+
+- 每张卡一个文件：`notes/cards/CARD-0007-<标题>.md`，文件名带稳定 ID；标题改了也不改名，否则 Obsidian 会把同一张卡当成新卡，复习进度清零。
+- 卡片用多行语法：问题、单独一行 `?`、答案，末尾 `#review`；配 Spaced Repetition 插件即可复习。
+- 不写 `views/`：视图每次重建会改变行号，而插件按路径与卡片位置记进度，放那里等于每次清零。
+- 在 Obsidian 或 Anki 里复习后，结果必须回写 `records/reviews.jsonl`，否则 `review_schedule.py` 与外部调度会各算一套，掌握度不一致。
+- 源记录删除后旧卡片文件保留并报 `orphans`；脚本不自动删，人工确认后再清。
+
+### Anki 导出（TSV + GUID，无需 AnkiConnect）
+
+不想装 Obsidian 插件时，用 `export_anki.py` 导出 Anki 可导入的 TSV：
+
+```bash
+python scripts/export_anki.py --kb 学习库
+python scripts/export_anki.py --kb 学习库 --deck "考研::数学" --all --json
+```
+
+- 输出 `views/anki-cards.tsv`，在 Anki 里 `File > Import` 选这个文件，按文件头自动识别分隔符、牌组、笔记类型与标签。
+- 文件头固定六行：`#separator:tab`、`#html:true`、`#notetype column:5`、`#deck column:4`、`#tags column:3`、`#guid column:6`（Anki 2.1.54+ 语法）。
+- 第六列是 `CARD-0007` 这样的稳定 ID，作为 GUID；重复导入会更新同一张笔记，不会重复建卡。这就是不需要 AnkiConnect 也能幂等同步的原因。
+- 正面是问题与触发信号，背面是方法/步骤/边界/证据，正文转成 HTML（`<br>` 换行、`<b>` 小标题）；标题里的尖括号会被转义，不会被 Anki 当标签解析。
+- `status=retired` 的卡默认跳过；`--all` 才导出。字段内容为空时背面写「（卡片内容待补）」并在输出里列出 ID。
+- 在 Anki 里评分后同样要回写 `records/reviews.jsonl`；Anki 自己的调度与 `review_schedule.py` 不共享状态。
+
+## 会话续接与上下文
+
+上下文不能回收，只能浓缩：
+
+- 开场跑 `python scripts/session_digest.py --kb 学习库`，默认 ≤ 2000 字，只读 `progress.md` 与 `records/*.jsonl`，不读 `notes/`。
+- 按摘要里的指针取单篇笔记；不整库读入，也不把上一轮对话当状态存储。
+- 每讲、每卷结束更新 `progress.md` 的五项指针；长会话被压缩后靠它恢复。
+- 单次检索用 `kb_index.py search --top 5`，不要把命中文件整篇读入。

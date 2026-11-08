@@ -156,6 +156,36 @@ INTENTS = [
         "keys": ["复习", "间隔", "排期", "到期", "再复习"],
     },
     {
+        "id": "obsidian-cards",
+        "entry": "scripts/export_cards.py",
+        "phrases": [
+            "把卡片导出成 Obsidian 每卡一个文件", "卡片怎么同步到 Obsidian 里复习",
+            "Obsidian 的间隔重复插件怎么接", "复习卡放 views 还是 notes",
+            "复习卡导出后进度会不会清零", "卡片放 views 还是 notes",
+        ],
+        "keys": ["obsidian", "复习卡", "间隔重复", "每卡一文件", "export_cards"],
+    },
+    {
+        "id": "anki-export",
+        "entry": "scripts/export_anki.py",
+        "phrases": [
+            "把卡片导出成 Anki 能直接导入的文件", "Anki 那套复习卡能直接导入吗",
+            "Anki 导入的 TSV 文件头怎么写", "重导入会不会重复建卡",
+            "不想装 Obsidian 插件怎么在 Anki 里复习", "export_anki 的牌组参数怎么用",
+        ],
+        "keys": ["anki", "tsv", "guid", "牌组", "重导入", "export_anki"],
+    },
+    {
+        "id": "session-digest",
+        "entry": "scripts/session_digest.py",
+        "phrases": [
+            "新会话怎么快速续接上次进度", "换个会话就忘了学到哪了",
+            "开场先看摘要再按指针取单篇", "长会话上下文太长怎么办",
+            "session_digest 默认多少字", "上下文过长时怎么压缩",
+        ],
+        "keys": ["摘要", "续接", "换会话", "上下文", "浓缩", "session_digest"],
+    },
+    {
         "id": "paper-report",
         "entry": "scripts/paper_report.py",
         "phrases": [

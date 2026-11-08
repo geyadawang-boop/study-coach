@@ -44,3 +44,7 @@
 {"id":"RT-44","input":"能不能同时给我常规解法和两种巧解","expect":"references/solution-research.md"}
 {"id":"RT-45","input":"跑一下 web_search 检索脚本，用域名过滤只搜学术站点","expect":"scripts/web_search.py"}
 {"id":"RT-46","input":"检索脚本遇到反爬或者超时怎么处理","expect":"scripts/web_search.py"}
+{"id":"RT-47","input":"把复习卡导出成 Obsidian 每卡一个文件，换标题会不会清零进度","expect":"scripts/export_cards.py"}
+{"id":"RT-48","input":"新会话上下文太长，怎么只读摘要续接上次进度","expect":"scripts/session_digest.py"}
+{"id":"RT-49","input":"把卡片导出成 Anki 能直接导入的文件，重复导入会不会建重复卡","expect":"scripts/export_anki.py"}
+{"id":"RT-50","input":"Anki 导入用的 TSV 文件头和牌组怎么指定","expect":"scripts/export_anki.py"}

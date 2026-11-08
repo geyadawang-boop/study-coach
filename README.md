@@ -2,7 +2,7 @@
 
 > 一个可以直接加载进 Agent 的备考 Skill：把教材、考纲、真题变成一条可恢复的「诊断—讲—例—练—测—复习」流水线。
 
-![checks](https://img.shields.io/badge/checks-29%2F29-brightgreen)
+![checks](https://img.shields.io/badge/checks-32%2F32-brightgreen)
 ![python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![deps](https://img.shields.io/badge/core%20deps-stdlib--only-lightgrey)
 
@@ -112,7 +112,9 @@ Brave → Yahoo 顺序回退，`status=ok` 即停；字符预算、域名白名�
 - 每个高频误解配 1 道探测题；错题沉淀进 `records/errors.jsonl`。
 - 多步卡按最弱一步评分，不是二值回忆。
 - FSRS 排期：回放历史算 `due / interval_days`；未装 `fsrs` 时显式降级四档阶梯，字段不变。
+- Obsidian 复习：`export_cards.py` 每卡一个文件，写 `问题` / `?` / 答案 / `#review`；文件名带稳定 ID，改标题不丢复习进度，配 Spaced Repetition 插件直接复习。
 - 掌握度用证据计数四级（L0–L3），样本 < 5 只报「证据不足」，不估概率。
+- 新会话先跑 `session_digest.py`：只读 `progress.md` 与 `records/`，≤ 2000 字，按指针取单篇，不整库读入。
 
 ### 5. 知识库、检索与报告
 
@@ -186,6 +188,9 @@ Skill 会先收「主教材 / 考纲 / 考试信息」三件套，再按三层�
 | 建索引 | `python scripts/kb_index.py build 学习库 --db 学习库/.index/index.db` | FTS5 索引，可删可重建 |
 | 检索 | `python scripts/kb_index.py search 学习库/.index/index.db "有理化" --top 5` | 命中笔记与切块 |
 | 复习排期 | `python scripts/review_schedule.py --kb 学习库` | 到期卡与间隔 |
+| 导出 Obsidian 卡 | `python scripts/export_cards.py --kb 学习库` | `notes/cards/CARD-xxxx-*.md`，一卡一文件 |
+| 导出 Anki TSV | `python scripts/export_anki.py --kb 学习库` | `views/anki-cards.tsv`，GUID 去重，无需 AnkiConnect |
+| 开场摘要 | `python scripts/session_digest.py --kb 学习库` | ≤ 2000 字续接摘要，不读整篇笔记 |
 
 模板自带一条完整链路：`DOC-0001` 资料、`LEC-001` 讲义、`CARD-0001` 卡片、`ERR-0001` 错题、`CONF-0001` 困惑、`EVT-000001` 事件。实测 `kb_health` 输出 `errors=0 warnings=0 infos=0`，索引 6 篇文档、24 个切块。
 
@@ -194,8 +199,8 @@ Skill 会先收「主教材 / 考纲 / 考试信息」三件套，再按三层�
 ```text
 study-coach/
 ├── SKILL.md                 # 技能入口：触发语、主循环、硬规则、完成标准
-├── checks.json              # 29 项验收清单
-├── references/              # 9 份协议文档 + capabilities.json（26 项能力契约）
+├── checks.json              # 32 项验收清单
+├── references/              # 9 份协议文档 + capabilities.json（29 项能力契约）
 │   ├── source-layers.md     # 资料分层、冲突裁决、缺口检测
 │   ├── lecture-and-drill.md # 九步讲义循环、七段讲题、三层追问
 │   ├── solution-research.md # 解法检索、多解对比、来源与降级
@@ -205,10 +210,10 @@ study-coach/
 │   ├── output-contract.md   # 输出模板、公式渲染、引用规则
 │   ├── research.md          # 检索、引用回指、失败降级
 │   └── tech-stack.md        # 选型、依赖、升级触发条件
-├── scripts/                 # 21 个可执行脚本
+├── scripts/                 # 24 个可执行脚本
 ├── subjects/calculus/       # 学科插件：考纲、渲染、题型、误解库、术语
 ├── 知识库模板/              # 可直接复制的学习库骨架，含示例讲义与记录
-├── evals/                   # 23 条行为用例、29 条检索、46 条路由、17 个 fixture
+├── evals/                   # 25 条行为用例、29 条检索、50 条路由、17 个 fixture
 └── agents/openai.yaml       # Agent 接口描述
 ```
 
@@ -218,20 +223,20 @@ study-coach/
 
 ```bash
 python scripts/run_checks.py --skill-root . --kb <你的学习库>
-# passed=29 failed=0 skipped=0
+# passed=32 failed=0 skipped=0
 
 python scripts/route.py --eval evals/routing.jsonl
-# top1=45/46 (98%)  top3=46/46 (100%)
+# top1=49/50 (98%)  top3=50/50 (100%)
 ```
 
 当前基线：
 
 | 项目 | 数量 / 结果 |
 | --- | --- |
-| 验收检查 | 29 项，全部 PASS |
-| 可执行脚本 | 21 个 |
-| 能力契约 | 26 项，entry/reference 全部指向真实文件 |
-| 行为评测 | 23 条 |
+| 验收检查 | 32 项，全部 PASS |
+| 可执行脚本 | 24 个 |
+| 能力契约 | 29 项，entry/reference 全部指向真实文件 |
+| 行为评测 | 25 条 |
 | 检索评测 | 29 条真实问法，hybrid hit@5 全中 |
 | 路由回归 | top1 98%，top3 100% |
 | 真实学习库体检 | 无 error |
@@ -255,6 +260,8 @@ python scripts/route.py --eval evals/routing.jsonl
 - OCR 与多栏切题的 bbox 需要模型复核，低置信内容标「待核」，不自动猜。
 - 路由 top1 为 98%：个别说法会先命中讲义入口，但 top3 能兜住。
 - 外部检索依赖网络，超时后显式降级，不会静默卡住。
+- 上下文只能浓缩、不能回收：长会话最终仍会被压缩，所以状态必须落到 `progress.md` 与 `records/`，不靠上下文记忆。
+- StackExchange 只作验算与反例来源，中文题干需先译成英文关键词；它不是考纲依据，也不做首选检索源。
 - PDF / OCR / SymPy 相关检查在依赖缺失时会 SKIP，不会假装通过。
 
 ## 数据与隐私
