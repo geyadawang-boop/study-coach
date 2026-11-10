@@ -176,6 +176,26 @@ INTENTS = [
         "keys": ["anki", "tsv", "guid", "牌组", "重导入", "export_anki"],
     },
     {
+        "id": "structure-map",
+        "entry": "scripts/structure_map.py",
+        "phrases": [
+            "把知识地图画成结构地图", "先给整张图再讲细节",
+            "知识点之间的依赖关系画出来", "哪些是必掌握哪些是了解",
+            "地图里把未知区域标出来",
+        ],
+        "keys": ["结构地图", "依赖", "必掌握", "未知区域", "知识地图"],
+    },
+    {
+        "id": "cheatsheet",
+        "entry": "scripts/cheatsheet.py",
+        "phrases": [
+            "做一页 A4 速查表", "考前十分钟看的那张纸",
+            "只收高频公式和陷阱", "速查表不要变成笔记压缩",
+            "公式和适用条件放同一格",
+        ],
+        "keys": ["速查表", "A4", "一页", "陷阱清单", "识别信号"],
+    },
+    {
         "id": "session-digest",
         "entry": "scripts/session_digest.py",
         "phrases": [

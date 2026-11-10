@@ -121,6 +121,8 @@ description: "通用备考与学习教练，适用于任何有教材和考试的
 | 多栏/跨页试卷：先自动提案题号区域，模型复核 bbox 后裁图逐区取文 | `scripts/page_regions.py --suggest`，复核后可 `--template` 手填 |
 | 复习排期：回放复习历史，算下次间隔与到期日 | `scripts/review_schedule.py` |
 | 把卡片导出成 Obsidian 每卡一文件（`::` 多行卡 + `#review`，路径稳定不丢复习进度） | `scripts/export_cards.py` |
+| 把知识地图渲染成可导航的结构地图（三档优先级、依赖边、未知区域） | `scripts/structure_map.py` |
+| 做一页 A4 速查表（公式+条件、易混对照、识别信号、陷阱） | `scripts/cheatsheet.py` |
 | 导出 Anki 可导入 TSV（GUID 去重、HTML 卡片，无需 AnkiConnect） | `scripts/export_anki.py` |
 | 新会话开场摘要：只看指针与记录，≤ 2000 字，不读整篇笔记 | `scripts/session_digest.py` |
 | 讲题稿/追问稿写完后的结构与深度检查（七段 / 三层） | `scripts/explain_lint.py` |

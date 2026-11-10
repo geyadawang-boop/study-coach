@@ -1,0 +1,12 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>一页速查表</title><style>
+@page { size: A4 portrait; margin: 10mm; }
+body { font-family: "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+       color: #111; margin: 0; font-size: 9.5pt; line-height: 1.45; }
+h1 { font-size: 16pt; margin: 0 0 4mm; border-bottom: 2px solid #111; padding-bottom: 2mm; }
+h2 { font-size: 11pt; margin: 4mm 0 2mm; border-left: 4px solid #111; padding-left: 2mm; }
+table { border-collapse: collapse; width: 100%; margin-bottom: 2mm; }
+th, td { border: 0.4pt solid #555; padding: 1.2mm 1.6mm; vertical-align: top; }
+th { background: #eee; font-weight: 700; text-align: left; }
+ol { margin: 0 0 2mm 5mm; padding: 0; }
+p.note { color: #444; font-size: 8pt; margin: 0 0 3mm; }
+</style></head><body><h1>一页速查表</h1><p class="note">由 scripts/cheatsheet.py 生成。只收考场要用、平时会忘的内容；黑白打印。</p><h2>一、核心公式与条件</h2><table><thead><tr><th>公式 / 方法</th><th>适用条件</th><th>常见误用</th></tr></thead><tbody><tr><td>0/0 型极限含根式</td><td>根号内为负或 x→∞ 时改用倒代换</td><td>有理化 + 等价无穷小</td></tr></tbody></table><h2>二、易混对照</h2><table><thead><tr><th>A</th><th>B / 边界</th><th>判定信号</th></tr></thead><tbody><tr><td>有理化的时机</td><td>不知道什么时候该先有理化，什么时候可以直接等价替换</td><td>方法选择</td></tr></tbody></table><h2>三、识别信号</h2><table><thead><tr><th>看到</th><th>想到</th><th>先做什么</th></tr></thead><tbody><tr><td>分子分母含根号；x→0 时同时趋于 0</td><td>0/0 型极限含根式</td><td>有理化 + 等价无穷小</td></tr></tbody></table><h2>四、陷阱清单</h2><ol><li>直接代入后不做有理化就套等价无穷小（ERR-0001，1 次）—— 先有理化，再整理成乘积，最后等价替换</li></ol></body></html>

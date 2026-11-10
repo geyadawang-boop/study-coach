@@ -63,6 +63,8 @@ REQUIRED = [
     "scripts/export_cards.py",
     "scripts/session_digest.py",
     "scripts/export_anki.py",
+    "scripts/structure_map.py",
+    "scripts/cheatsheet.py",
     "evals/fixtures/search-brave.html",
     "evals/fixtures/search-yahoo.html",
     "evals/fixtures/search-challenge.html",
@@ -761,6 +763,159 @@ def check_anki_export(root: Path) -> list[dict]:
     for rel, needles in (
         ("references/knowledge-base.md", ("export_anki.py", "Anki")),
         ("SKILL.md", ("scripts/export_anki.py",)),
+    ):
+        path = root / rel
+        if not path.is_file():
+            out.append(finding("error", f"缺文件：{rel}"))
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for needle in needles:
+            if needle not in text:
+                out.append(finding("error", f"{rel} 缺「{needle}」"))
+    return out
+
+
+def check_structure_map(root: Path) -> list[dict]:
+    """结构地图：优先级分组、依赖边、未知区域、成环与门槛。"""
+    out: list[dict] = []
+    script = root / "scripts/structure_map.py"
+    template = root / "知识库模板"
+    if not script.is_file():
+        return [finding("error", "缺文件：scripts/structure_map.py")]
+    if not template.is_dir():
+        return [finding("error", "缺目录：知识库模板")]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        kb = Path(tmp) / "kb"
+        shutil.copytree(template, kb)
+        proc = subprocess.run(
+            [sys.executable, str(script), "--kb", str(kb), "--json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            return out + [finding("error", f"structure_map 输出不是 JSON：{proc.stderr.strip()[:160]}")]
+        if proc.returncode != 0 or data.get("nodes") != 2:
+            out.append(finding("error", f"模板地图解析异常：code={proc.returncode} nodes={data.get('nodes')}"))
+        if data.get("edges") != 1:
+            out.append(finding("error", f"模板地图依赖边应为 1，实际 {data.get('edges')}"))
+        rendered = kb / "views/结构地图.md"
+        if not rendered.is_file():
+            out.append(finding("error", "没有生成 views/结构地图.md"))
+        else:
+            text = rendered.read_text(encoding="utf-8")
+            for needle in ("mermaid", "mindmap", "必掌握", "依赖关系", "未知区域", "极限四则运算"):
+                if needle not in text:
+                    out.append(finding("error", f"结构地图缺「{needle}」"))
+
+        bad = Path(tmp) / "bad"
+        (bad / "views").mkdir(parents=True)
+        (bad / "01-知识地图.md").write_text(
+            "# 知识地图\n\n| 知识点 | 考纲要求 | 前置 | 状态 | 证据 |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| A | 掌握 | B | L1 | LEC-001 |\n"
+            "| B | 掌握 | A | L1 | LEC-001 |\n"
+            "| C | 掌握 | 外部前置 | L1 | LEC-001 |\n"
+            "| D | 掌握 | 无 | L1 | LEC-001 |\n"
+            "| E | 掌握 | 无 | L1 | LEC-001 |\n",
+            encoding="utf-8",
+        )
+        proc = subprocess.run(
+            [sys.executable, str(script), "--kb", str(bad), "--strict", "--json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            data = {}
+        if proc.returncode != 1:
+            out.append(finding("error", f"成环地图应退出 1，实际 {proc.returncode}"))
+        if not data.get("cycles"):
+            out.append(finding("error", "成环地图没有报 cycles"))
+        if not data.get("violations"):
+            out.append(finding("error", "--strict 下门槛违规没有进 violations"))
+        if not data.get("unresolved"):
+            out.append(finding("error", "外部前置没有被列进 unresolved"))
+
+    for rel, needles in (
+        ("references/knowledge-base.md", ("structure_map.py", "结构地图")),
+        ("SKILL.md", ("scripts/structure_map.py",)),
+    ):
+        path = root / rel
+        if not path.is_file():
+            out.append(finding("error", f"缺文件：{rel}"))
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for needle in needles:
+            if needle not in text:
+                out.append(finding("error", f"{rel} 缺「{needle}」"))
+    return out
+
+
+def check_cheatsheet(root: Path) -> list[dict]:
+    """一页速查表：四区齐全、定义不入表、A4 打印、缺易混与陷阱退出 1。"""
+    out: list[dict] = []
+    script = root / "scripts/cheatsheet.py"
+    template = root / "知识库模板"
+    if not script.is_file():
+        return [finding("error", "缺文件：scripts/cheatsheet.py")]
+    if not template.is_dir():
+        return [finding("error", "缺目录：知识库模板")]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        kb = Path(tmp) / "kb"
+        shutil.copytree(template, kb)
+        cards = kb / "records/cards.jsonl"
+        rows = [json.loads(line) for line in cards.read_text(encoding="utf-8").splitlines() if line.strip()]
+        rows.append({
+            "id": "CARD-0099", "type": "定义", "title": "定义不该进速查表",
+            "method": "原样复述定义", "status": "verified",
+        })
+        cards.write_text(
+            "\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n", encoding="utf-8"
+        )
+        proc = subprocess.run(
+            [sys.executable, str(script), "--kb", str(kb), "--json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            return out + [finding("error", f"cheatsheet 输出不是 JSON：{proc.stderr.strip()[:160]}")]
+        if proc.returncode != 0 or not data.get("gate"):
+            out.append(finding("error", f"模板速查表未通过：code={proc.returncode} gate={data.get('gate')}"))
+        md = kb / "views/速查表.md"
+        html_file = kb / "views/速查表.html"
+        if not md.is_file() or not html_file.is_file():
+            out.append(finding("error", "没有生成速查表 md/html"))
+        else:
+            text = md.read_text(encoding="utf-8")
+            for needle in ("核心公式与条件", "易混对照", "识别信号", "陷阱清单"):
+                if needle not in text:
+                    out.append(finding("error", f"速查表缺区块「{needle}」"))
+            if "定义不该进速查表" in text:
+                out.append(finding("error", "定义卡被收进速查表"))
+            page = html_file.read_text(encoding="utf-8")
+            if "@page" not in page or "A4" not in page:
+                out.append(finding("error", "速查表 HTML 没有 A4 打印样式"))
+
+        empty = Path(tmp) / "empty"
+        (empty / "records").mkdir(parents=True)
+        for name in ("cards.jsonl", "errors.jsonl", "confusions.jsonl"):
+            (empty / "records" / name).write_text("", encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(script), "--kb", str(empty), "--json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if proc.returncode != 1:
+            out.append(finding("error", f"空记录应退出 1，实际 {proc.returncode}"))
+        if "不合格" not in proc.stderr:
+            out.append(finding("error", "空记录没有给出「不合格」原因"))
+
+    for rel, needles in (
+        ("references/knowledge-base.md", ("cheatsheet.py", "速查表")),
+        ("SKILL.md", ("scripts/cheatsheet.py",)),
     ):
         path = root / rel
         if not path.is_file():
@@ -1928,6 +2083,8 @@ CHECKS = {
     "obsidian_cards": lambda root, kb: check_obsidian_cards(root),
     "anki_export": lambda root, kb: check_anki_export(root),
     "session_digest": lambda root, kb: check_session_digest(root),
+    "structure_map": lambda root, kb: check_structure_map(root),
+    "cheatsheet": lambda root, kb: check_cheatsheet(root),
     "privacy": lambda root, kb: check_privacy(root),
     "render_rules": lambda root, kb: check_render_rules(root),
     "export_and_backlinks": lambda root, kb: check_export_and_backlinks(root),

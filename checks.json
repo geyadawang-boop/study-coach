@@ -132,6 +132,16 @@
       "desc": "export_anki.py 生成 Anki 2.1.54+ 文件头、GUID 稳定去重、HTML 转义、retired 默认跳过、重跑幂等"
     },
     {
+      "id": "structure_map",
+      "level": "error",
+      "desc": "structure_map.py 按三档优先级分组出 mermaid 地图、依赖边受控、未知区域不丢、成环与 --strict 门槛退出 1"
+    },
+    {
+      "id": "cheatsheet",
+      "level": "error",
+      "desc": "cheatsheet.py 四区齐全、定义卡不入表、A4 打印样式、缺易混对照与陷阱时退出 1"
+    },
+    {
       "id": "privacy",
       "level": "error",
       "desc": "公开仓库前扫描：无私钥/API key/token、无本机绝对路径、无个人邮箱（noreply/example 例外）"

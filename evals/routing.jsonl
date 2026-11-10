@@ -48,3 +48,7 @@
 {"id":"RT-48","input":"新会话上下文太长，怎么只读摘要续接上次进度","expect":"scripts/session_digest.py"}
 {"id":"RT-49","input":"把卡片导出成 Anki 能直接导入的文件，重复导入会不会建重复卡","expect":"scripts/export_anki.py"}
 {"id":"RT-50","input":"Anki 导入用的 TSV 文件头和牌组怎么指定","expect":"scripts/export_anki.py"}
+{"id":"RT-51","input":"把知识地图画成结构地图，标出必掌握和依赖关系","expect":"scripts/structure_map.py"}
+{"id":"RT-52","input":"地图里没拿到的前置和未知区域怎么标出来","expect":"scripts/structure_map.py"}
+{"id":"RT-53","input":"帮我做一页 A4 速查表，只收高频公式和陷阱","expect":"scripts/cheatsheet.py"}
+{"id":"RT-54","input":"速查表不要变成笔记压缩，公式要和适用条件放同一格","expect":"scripts/cheatsheet.py"}

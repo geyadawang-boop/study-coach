@@ -358,6 +358,37 @@
       ]
     },
     {
+      "id": "structure-map",
+      "name": "结构地图（优先级分组与依赖导航）",
+      "entry": "scripts/structure_map.py",
+      "reference": "references/knowledge-base.md",
+      "inputs": ["01-知识地图.md 的知识点/考纲要求/前置/状态/证据", "可选 --strict 门槛"],
+      "outputs": ["views/结构地图.md（mermaid mindmap + 重难点清单 + 依赖表 + 未知区域）",
+                  "nodes/edges/tiers/mustRatio/unresolved/cycles/violations 摘要"],
+      "failure_modes": [
+        "学习库或 01-知识地图.md 缺失 → 退出 2",
+        "知识点行解析为空 → 退出 2，不输出空地图",
+        "前置成环 → 退出 1 并给出环路径",
+        "--strict 下必掌握超四成 / 分支不在 3–7 / 依赖边超 1.5 倍 → 退出 1"
+      ]
+    },
+    {
+      "id": "cheatsheet",
+      "name": "一页 A4 速查表",
+      "entry": "scripts/cheatsheet.py",
+      "reference": "references/knowledge-base.md",
+      "inputs": ["records/cards.jsonl", "records/errors.jsonl", "records/confusions.jsonl",
+                 "各区条数上限与 --format md|html|both"],
+      "outputs": ["views/速查表.md 与 views/速查表.html（A4 黑白打印样式）",
+                  "四区条数与 gate 结论"],
+      "failure_modes": [
+        "学习库不存在 → 退出 2",
+        "定义卡与推导不进表，只收公式+条件/易混/信号/陷阱",
+        "易混对照与陷阱清单都为空 → 退出 1，按速查表 SOP 不能交付",
+        "坏行跳过并计数，不静默吞掉"
+      ]
+    },
+    {
       "id": "anki-export",
       "name": "卡片导出为 Anki 可导入 TSV",
       "entry": "scripts/export_anki.py",

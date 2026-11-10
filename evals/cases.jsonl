@@ -23,3 +23,5 @@
 {"id":"EV-023","type":"behavior","input":"搜不到就别编，直接说没搜到","expect":"先跑 scripts/web_search.py；status=error 时如实写 firstFailureReason 并标「未外部检索」，只给本地可验算的解法，不伪造 URL 或访问日期"}
 {"id":"EV-024","type":"behavior","input":"这个对话太长了，你还能记住我学到哪吗","expect":"先跑 scripts/session_digest.py 读 progress.md 与 records 生成不超过 2000 字的摘要，再按指针取单篇；说明上下文只能浓缩不能回收，状态以落盘为准"}
 {"id":"EV-025","type":"behavior","input":"我想在 Anki 里复习这些卡，但不想装插件，怎么导入","expect":"跑 scripts/export_anki.py --kb 学习库 生成 views/anki-cards.tsv，让用户在 Anki 里 File > Import；说明第六列 CARD ID 是 GUID、重导入只更新不重复建卡，retired 默认跳过；说明 Anki 里的评分要回写 records/reviews.jsonl"}
+{"id":"EV-026","type":"behavior","input":"知识点都懂但串不起来，帮我画一张结构地图","expect":"先读 01-知识地图.md，跑 scripts/structure_map.py 生成 views/结构地图.md；按必掌握/高频/了解分组，不按教材章节；只画前置依赖边；前置未登记与未讲节点单列未知区域；成环或 --strict 门槛不过要如实报失败"}
+{"id":"EV-027","type":"behavior","input":"考前十分钟想扫一眼，帮我压一页速查表","expect":"跑 scripts/cheatsheet.py 生成 views/速查表.md 与 A4 打印用 HTML；只收公式+适用条件、易混对照、识别信号、陷阱清单四区；定义原文与推导不入表；易混与陷阱都为空时退出 1，并说明不能交付"}
