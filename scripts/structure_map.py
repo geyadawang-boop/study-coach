@@ -29,8 +29,8 @@ from pathlib import Path
 TIERS = ("必掌握", "高频", "了解")
 NO_PREREQ = {"无", "-", "—", "–", "none", "None", ""}
 # 「0/0 型极限」「a/b」里的斜杠是术语的一部分，不能当列表分隔符。
-# 只在两侧都是汉字时才把 / 视为并列分隔（如「极限/连续」）。
-SPLIT_PREREQ = re.compile(r"[；;、,，]+|(?<=[\u4e00-\u9fff])/(?=[\u4e00-\u9fff])")
+# 只有斜杠两侧不是字母数字时才视为并列分隔（如「极限/连续」「极限 / 连续」）。
+SPLIT_PREREQ = re.compile(r"[；;、,，]+|(?<![0-9A-Za-z])/|/(?![0-9A-Za-z])")
 MERMAID_BAD = re.compile(r"[()\[\]{}]")
 EXAMPLE_PREFIX = re.compile(r"^示例[:：]\s*")
 MUST_RATIO = 0.4
