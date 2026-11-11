@@ -23,13 +23,16 @@ Skill 自带零 API Key 检索脚本，不依赖宿主是否开放搜索工具�
 python scripts/web_search.py "tanx-sinx/x^3 一题多解" \
   --include-domains bilibili.com,math.stackexchange.com,arxiv.org \
   --preferred-domains bilibili.com,math.stackexchange.com \
+  --fallback-query "limit (tan x - sin x)/x^3 without lhopital" \
   --max-results 5 --min-results 2 --timeout 60 --max-chars 2800
 ```
 
 - 顺序固定 Brave → Yahoo；`status=ok` 即停，同一请求不重复发。
-- `status=degraded`：有结果但弱（少于 `--min-results`），可引用但要标注「结果偏少」。
-- `status=error`：读 `firstFailureReason`，`challenge-detected` / `timeout` / `no-results` / `filtered-out` / `budget-exhausted` 原样写进降级说明。
-- 输出 JSON：`results[].title/url/snippet`、`providerAttempts`、`apiKeyUsed=false`、`resultChars`。
+- `status=degraded`：有结果但弱（少于 `--min-results`、title/snippet 全空，或 `filterRelaxed=true`），可引用但要标注「结果偏少 / 未按域名过滤」。
+- 域名白名单把结果全滤空时不再直接报错：保留原结果、降为 `degraded` 并置 `filterRelaxed=true`，由调用方决定是否采用。
+- `--fallback-query`：首个查询无结果、或只拿到 `filterRelaxed` 结果时补发一次（典型是中文题干配英文关键词打 StackExchange）；`queriesTried` 与 `fallbackUsed` 写进 JSON。
+- `status=error`：读 `firstFailureReason`，`challenge-detected` / `timeout` / `no-results` / `budget-exhausted` 原样写进降级说明。
+- 输出 JSON：`results[].title/url/snippet`、`providerAttempts`、`filterRelaxed`、`apiKeyUsed=false`、`resultChars`。
 - 只发 GET，不登录、不带 key、不落盘；离线自测用 `--fixture-brave` / `--fixture-yahoo`。
 - 传输优先 `curl.exe`（Yahoo 对 urllib 的指纹常回 500），没有 curl 时退回 urllib 并重试一次。
 

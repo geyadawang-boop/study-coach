@@ -482,8 +482,10 @@ def check_web_search(root: Path) -> list[dict]:
                         "--max-results", "3"], 0, "yahoo-html", 2),
         ("域名过滤", ["q", "--engine", "brave", "--fixture-brave", str(brave),
                       "--include-domains", "bilibili.com"], 0, "brave-html", 1),
+        ("域名全滤空降级", ["q", "--engine", "brave", "--fixture-brave", str(brave),
+                         "--include-domains", "example.org"], 1, "brave-html", 3),
         ("字符预算", ["q", "--engine", "brave", "--fixture-brave", str(brave),
-                      "--max-chars", "100"], 0, "brave-html", 1),
+                      "--max-chars", "500"], 0, "brave-html", 1),
     ]
     for label, extra, expected, provider, minimum in cases:
         code, data, err = run(extra)
@@ -507,10 +509,22 @@ def check_web_search(root: Path) -> list[dict]:
                 out.append(finding("error", "Yahoo 结果未解出真实 URL"))
             if not any("bilibili.com" in u for u in urls):
                 out.append(finding("error", "Yahoo 结果缺 bilibili.com"))
+        if label in ("Brave 解析", "Yahoo 解析"):
+            if not any((r.get("snippet") or "").strip() for r in data.get("results") or []):
+                out.append(finding("error", f"{label} 结果摘要全空"))
         if label == "域名过滤":
             urls = [r.get("url", "") for r in data.get("results") or []]
             if not urls or any("bilibili.com" not in u for u in urls):
                 out.append(finding("error", f"域名过滤混入站外结果：{urls}"))
+        if label == "域名全滤空降级":
+            if data.get("status") != "degraded" or data.get("filterRelaxed") is not True:
+                out.append(finding(
+                    "error",
+                    f"域名全滤空未降级保留：status={data.get('status')} "
+                    f"filterRelaxed={data.get('filterRelaxed')}",
+                ))
+            if (data.get("qualityGate") or {}).get("weak") is not True:
+                out.append(finding("error", "域名全滤空未在质量门标 weak"))
 
     # 正常结果正文出现 captcha 字样不应整次判 blocked
     noisy = Path(tempfile.mkdtemp()) / "brave-noisy.html"
@@ -533,6 +547,18 @@ def check_web_search(root: Path) -> list[dict]:
         out.append(finding(
             "error",
             f"反爬样例未按 challenge-detected 退出 2：code={code} reason={data.get('firstFailureReason')}",
+        ))
+
+    # 备选查询只在主查询无结果时才发：两个查询各跑 Brave/Yahoo，应留 4 条尝试
+    code, data, err = run(["q", "--engine", "auto", "--fixture-brave", str(challenge),
+                           "--fixture-yahoo", str(challenge), "--fallback-query", "q2"])
+    if data is None:
+        out.append(finding("error", f"备选查询样例输出不是 JSON：{err}"))
+    elif data.get("queriesTried") != ["q", "q2"] or len(data.get("providerAttempts") or []) != 4:
+        out.append(finding(
+            "error",
+            f"备选查询未按预期回退：queriesTried={data.get('queriesTried')} "
+            f"attempts={len(data.get('providerAttempts') or [])}",
         ))
     return out
 

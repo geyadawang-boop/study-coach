@@ -3,7 +3,7 @@
 > 一个可以直接加载进 Agent 的备考 Skill：把教材、考纲、真题变成一条可恢复的「诊断—讲—例—练—测—复习」流水线。
 
 ![checks](https://img.shields.io/badge/checks-35%20declared-brightgreen)
-![python](https://img.shields.io/badge/python-3.9%2B-blue)
+![python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![deps](https://img.shields.io/badge/core%20deps-stdlib--only-lightgrey)
 
 A general-purpose exam-prep coach skill for AI agents. It turns textbooks, syllabi, and past papers into a recoverable study pipeline, with structure checks and routing evals built in.
@@ -102,10 +102,11 @@ flowchart LR
 python scripts/web_search.py "tanx-sinx/x^3 一题多解" \
   --include-domains bilibili.com,math.stackexchange.com,arxiv.org \
   --preferred-domains math.stackexchange.com,bilibili.com \
+  --fallback-query "limit (tan x - sin x)/x^3 without lhopital" \
   --max-results 5 --min-results 2 --timeout 60 --max-chars 2800
 ```
 
-Brave → Yahoo 顺序回退，`status=ok` 即停；字符预算、域名白名单、反爬识别（`challenge-detected`）与失败原因都写进 JSON。只有 `ok` 才允许把结果当外部来源，其余一律降级为「未外部检索」。
+Brave → Yahoo 顺序回退，`status=ok` 即停；结果带标题与正文摘要，字符预算、域名白名单、反爬识别（`challenge-detected`）与失败原因都写进 JSON。中文查询常拿不到 StackExchange 结果，`--fallback-query` 会在首个查询无结果、或白名单被全部滤空时补一次英文查询。只有 `ok` 才允许把结果当外部来源；`degraded`（结果偏少、摘要全空、`filterRelaxed=true`）可引用但必须标注「未按域名过滤 / 结果偏少」，`error` 一律降级为「未外部检索」。
 
 ### 4. 批改、记忆与复习
 
@@ -146,6 +147,8 @@ cp -r 知识库模板 学习库          # Windows: Copy-Item -Recurse 知识库
 python scripts/kb_health.py 学习库   # errors=0 warnings=0
 ```
 
+运行环境：Python **3.11+**（推荐 3.12 / 3.13）。3.9 与 3.10 已停止维护，本仓库不再承诺兼容；CI 矩阵覆盖 3.11 / 3.12 / 3.13。
+
 核心脚本只用 Python 标准库；以下依赖按需安装：
 
 ```bash
@@ -159,12 +162,12 @@ pip install sympy           # 步骤等价与特殊值验算
 仓库带 `package.json` 与零依赖安装器，只做本地 / Release 分发，不发布 npm registry：
 
 ```bash
-npm pack                                    # 产出 study-coach-5.2.0.tgz
-npx ./study-coach-5.2.0.tgz install --dest ~/.trae-cn/skills/study-coach
-npx ./study-coach-5.2.0.tgz doctor --dest ~/.trae-cn/skills/study-coach
+npm pack                                    # 产出 study-coach-5.3.0.tgz
+npx ./study-coach-5.3.0.tgz install --dest ~/.trae-cn/skills/study-coach
+npx ./study-coach-5.3.0.tgz doctor --dest ~/.trae-cn/skills/study-coach
 ```
 
-`install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 35 项验收，所以 Python 3.9+ 仍是硬要求，npm 只负责搬文件。
+`install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 35 项验收，所以 Python 3.11+（推荐 3.12 / 3.13）是硬要求，低于 3.11 会直接给出提示并以 2 退出，npm 只负责搬文件。
 
 ### 3. 第一次对话
 

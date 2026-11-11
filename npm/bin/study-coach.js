@@ -14,6 +14,7 @@ const ROOT = path.resolve(__dirname, "..", "..");
 const DIRS = ["agents", "references", "scripts", "subjects", "evals", "知识库模板"];
 const FILES = ["SKILL.md", "README.md", "checks.json"];
 const SKIP = new Set(["__pycache__", ".index", "学习库", ".git", "node_modules"]);
+const MIN_PYTHON = [3, 11];
 
 function usage() {
   console.log(`study-coach ${pkg.version}
@@ -82,19 +83,40 @@ function install(opts) {
   console.log(`下一步：把该目录配置为 Agent 技能，或运行 python scripts/run_checks.py --skill-root .`);
 }
 
+function pythonVersion(python) {
+  const probe = spawnSync(
+    python,
+    ["-c", "import sys;print('%d.%d' % sys.version_info[:2])"],
+    { encoding: "utf-8" }
+  );
+  if (probe.error || probe.status !== 0) return null;
+  const [major, minor] = String(probe.stdout || "").trim().split(".").map(Number);
+  return Number.isFinite(major) && Number.isFinite(minor) ? [major, minor] : null;
+}
+
 function doctor(opts) {
   const root = opts.dest ? path.resolve(opts.dest) : ROOT;
   const script = path.join(root, "scripts", "run_checks.py");
   if (!fs.existsSync(script)) fail(`找不到 ${script}，先 install 或用 --dest 指向已安装目录`);
   const python = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
+  const version = pythonVersion(python);
+  if (!version) {
+    console.error(`study-coach: 找不到可用的 Python（${python}）。本 Skill 的核心脚本需要 Python 3.11+。`);
+    console.error("装好 Python 后重试，或用 PYTHON 环境变量指定解释器路径。");
+    process.exit(2);
+  }
+  if (version[0] < MIN_PYTHON[0] || (version[0] === MIN_PYTHON[0] && version[1] < MIN_PYTHON[1])) {
+    console.error(
+      `study-coach: 当前 Python ${version.join(".")} 低于要求的 ${MIN_PYTHON.join(".")}` +
+        `（推荐 3.12 / 3.13），升级解释器或换 PYTHON 后重试。`
+    );
+    process.exit(2);
+  }
   const args = [script, "--skill-root", root];
   args.push("--kb", path.resolve(opts.kb || path.join(root, "知识库模板")));
   const result = spawnSync(python, args, { stdio: "inherit" });
   if (result.error) {
-    console.error(`study-coach: 找不到 Python（${python}）。本 Skill 的核心脚本需要 Python 3.9+。`);
-    if (result.error.code === "ENOENT") {
-      console.error("装好 Python 后重试，或用 PYTHON 环境变量指定解释器路径。");
-    }
+    console.error(`study-coach: 调用 Python 失败（${python}）：${result.error.message}`);
     process.exit(2);
   }
   process.exit(result.status === null ? 2 : result.status);

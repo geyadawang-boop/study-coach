@@ -119,7 +119,7 @@
     {
       "id": "web_search",
       "level": "error",
-      "desc": "web_search.py 解析 Brave/Yahoo 结果、解出真实 URL、域名过滤与字符预算生效；只有无结果时才判反爬，正文出现 captcha 字样的正常页不误判；全程不声明使用 key"
+      "desc": "web_search.py 解析 Brave/Yahoo 标题与正文摘要、解出真实 URL、域名过滤与字符预算生效；白名单全滤空时降级保留并标 filterRelaxed（不直接报错）；备选查询只在主查询无结果或仅剩放宽结果时才发；只有无结果时才判反爬，正文出现 captcha 字样的正常页不误判；全程不声明使用 key"
     },
     {
       "id": "obsidian_cards",
