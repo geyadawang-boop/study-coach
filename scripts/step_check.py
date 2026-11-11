@@ -129,6 +129,8 @@ def verify(
     expect: str | None = None,
     latex: bool = False,
 ) -> dict:
+    if len(steps) < 2 and expect is None:
+        raise ValueError("至少需要两步才能验算等式链；只有一步时请用 --expect 核对最终答案")
     exprs = [parse_expr(item, latex) for item in steps]
     var = pick_symbol(exprs, var_name)
     results = []

@@ -27,7 +27,7 @@ LOW_CONF = 0.90
 
 
 def to_image(path: Path, page_no: int, dpi: int, image_out: Path | None) -> Path:
-    import fitz  # PyMuPDF
+    from fitz_compat import fitz  # PyMuPDF，经兼容层避免 1.28 弃用横幅污染 stdout
 
     with fitz.open(path) as doc:
         if page_no < 1 or page_no > doc.page_count:
@@ -77,6 +77,7 @@ def main() -> int:
         print(f"not a file: {path}", file=sys.stderr)
         return 2
 
+    rendered: Path | None = None
     try:
         if path.suffix.lower() in IMAGE_SUFFIXES:
             image = path
@@ -87,6 +88,8 @@ def main() -> int:
                 return 2
             image = to_image(path, args.page, args.dpi,
                              Path(args.image) if args.image else None)
+            if not args.image:
+                rendered = image  # 临时渲染图用完即删，不在系统临时目录堆积
             page = args.page
     except ImportError:
         print("需要 PyMuPDF：pip install pymupdf", file=sys.stderr)
@@ -100,9 +103,12 @@ def main() -> int:
     except ImportError:
         print("需要 RapidOCR：pip install rapidocr-onnxruntime", file=sys.stderr)
         return 3
-    except Exception as exc:  # 模型或图片异常
+    except Exception as exc:  # 图片损坏或无法解码
         print(f"OCR 失败（{type(exc).__name__}）：{exc}", file=sys.stderr)
-        return 3
+        return 2
+    finally:
+        if rendered is not None and rendered.exists():
+            rendered.unlink()
 
     chars = sum(len(line["text"]) for line in lines)
     low = [line for line in lines if line["score"] < LOW_CONF]

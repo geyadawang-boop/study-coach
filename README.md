@@ -2,7 +2,7 @@
 
 > 一个可以直接加载进 Agent 的备考 Skill：把教材、考纲、真题变成一条可恢复的「诊断—讲—例—练—测—复习」流水线。
 
-![checks](https://img.shields.io/badge/checks-34%2F34-brightgreen)
+![checks](https://img.shields.io/badge/checks-35%20declared-brightgreen)
 ![python](https://img.shields.io/badge/python-3.9%2B-blue)
 ![deps](https://img.shields.io/badge/core%20deps-stdlib--only-lightgrey)
 
@@ -54,6 +54,7 @@ flowchart LR
 
 - 三层模型：范围层（考纲 > 教材）、权威层（经典 > 教材 > 教辅）、应试层（真题 > 考纲 > 模拟题）。
 - 四标入库：`layer / kind / trust / coverage` 缺一项只能进临时区。
+- 注意别和存储布局混淆：三层四标管的是「资料谁说了算」，三平面（`notes/` `records/` `views/`）管的是「东西存哪儿」。
 - 冲突裁决固定四条，每次冲突落一条 `CONF` 记录。
 - 缺口检测输出三类：考纲有教材无、真题有教材无、教材有考纲无。
 - 教材换版：章节 diff、页码偏移、已退役题清单。
@@ -118,7 +119,7 @@ Brave → Yahoo 顺序回退，`status=ok` 即停；字符预算、域名白名�
 
 ### 5. 知识库、检索与报告
 
-- 三平面存储：`notes/` 叙述层、`records/` 只追加记录层、`views/` 可重建派生层。
+- 三平面存储：`notes/` 叙述层、`records/` 记录层、`views/` 可重建派生层。`records/*.jsonl` 以追加为主；卡片 `status`、错题 `count/status`、复习 `due` 这类状态字段允许原地更新，历史仍以 `reviews.jsonl` 回放为准。
 - 混合检索：SQLite FTS5（BM25）+ 字符 bigram 余弦 + RRF，可降级到 `bm25` 或 `vector`。
 - 题型卡片、易错点汇总、学情快照、双链反查、高频困惑点统计。
 - 结构地图：`structure_map.py` 把知识地图按必掌握/高频/了解重排，只画前置依赖，单列未知区域；成环与 `--strict` 门槛可判失败。
@@ -203,7 +204,7 @@ Skill 会先收「主教材 / 考纲 / 考试信息」三件套，再按三层�
 ```text
 study-coach/
 ├── SKILL.md                 # 技能入口：触发语、主循环、硬规则、完成标准
-├── checks.json              # 34 项验收清单
+├── checks.json              # 35 项验收清单
 ├── references/              # 9 份协议文档 + capabilities.json（31 项能力契约）
 │   ├── source-layers.md     # 资料分层、冲突裁决、缺口检测
 │   ├── lecture-and-drill.md # 九步讲义循环、七段讲题、三层追问
@@ -214,7 +215,7 @@ study-coach/
 │   ├── output-contract.md   # 输出模板、公式渲染、引用规则
 │   ├── research.md          # 检索、引用回指、失败降级
 │   └── tech-stack.md        # 选型、依赖、升级触发条件
-├── scripts/                 # 26 个可执行脚本
+├── scripts/                 # 27 个可执行脚本
 ├── subjects/calculus/       # 学科插件：考纲、渲染、题型、误解库、术语
 ├── 知识库模板/              # 可直接复制的学习库骨架，含示例讲义与记录
 ├── evals/                   # 27 条行为用例、29 条检索、54 条路由、17 个 fixture
@@ -226,24 +227,29 @@ study-coach/
 ## 质量门与实测
 
 ```bash
+python scripts/run_checks.py --skill-root .
+# passed=34 failed=0 skipped=1     ← skipped 是 kb_health，未指定 --kb 不体检
+
 python scripts/run_checks.py --skill-root . --kb <你的学习库>
-# passed=34 failed=0 skipped=0
+# passed=35 failed=0 skipped=0
 
 python scripts/route.py --eval evals/routing.jsonl
-# top1=52/54 (96%)  top3=54/54 (100%)
+# top1=53/54 (98%)  top3=54/54 (100%)
 ```
+
+未装 PyMuPDF / fsrs 时，相关检查会显式 SKIP，不会假装 PASS。
 
 当前基线：
 
 | 项目 | 数量 / 结果 |
 | --- | --- |
-| 验收检查 | 34 项，全部 PASS |
-| 可执行脚本 | 26 个 |
+| 验收检查 | 35 项；带 `--kb` 时 35 PASS，不带时 34 PASS + 1 SKIP |
+| 可执行脚本 | 27 个 |
 | 能力契约 | 31 项，entry/reference 全部指向真实文件 |
 | 行为评测 | 27 条 |
 | 检索评测 | 29 条真实问法，hybrid hit@5 全中 |
-| 路由回归 | top1 96%，top3 100% |
-| 真实学习库体检 | 无 error |
+| 路由回归 | top1 98%（53/54），top3 100% |
+| 模板学习库体检 | `errors=0 warnings=0 infos=0` |
 
 这些数字由脚本产出，不靠 README 自证；`run_checks.py` 会检查 `checks.json` 与实现是否一致。
 
@@ -262,11 +268,13 @@ python scripts/route.py --eval evals/routing.jsonl
 
 - `explain_lint.py` 只查结构下限，不评讲解质量；文风与类比是否贴切仍靠模型自评与用户反馈。
 - OCR 与多栏切题的 bbox 需要模型复核，低置信内容标「待核」，不自动猜。
-- 路由 top1 为 98%：个别说法会先命中讲义入口，但 top3 能兜住。
+- 路由 top1 为 98%：个别说法（如「只给范围没给大纲」）会先命中讲义入口，但 top3 能兜住。
 - 外部检索依赖网络，超时后显式降级，不会静默卡住。
 - 上下文只能浓缩、不能回收：长会话最终仍会被压缩，所以状态必须落到 `progress.md` 与 `records/`，不靠上下文记忆。
 - StackExchange 只作验算与反例来源，中文题干需先译成英文关键词；它不是考纲依据，也不做首选检索源。
 - PDF / OCR / SymPy 相关检查在依赖缺失时会 SKIP，不会假装通过。
+- PyMuPDF 1.28 起 `import fitz` 会向 stdout 打弃用横幅；所有脚本统一走 `fitz_compat.py`，JSON 输出不会被污染。
+- Windows 控制台/管道中文乱码时先设 `$env:PYTHONUTF8="1"`；脚本读写文件已固定 UTF-8。
 
 ## 数据与隐私
 

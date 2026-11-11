@@ -153,6 +153,11 @@ def build(rows: list[dict], paper: str | None) -> tuple[dict, list[str]]:
     return report, warnings
 
 
+def cell(value) -> str:
+    """Markdown 表格单元：竖线转义、换行压平，避免整张表错列。"""
+    return str(value).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+
 def as_markdown(report: dict) -> str:
     lines = [BANNER, "", f"# 整卷报告 {report['paper'] or '（未标卷别）'}", ""]
     lines.append(f"题数 {report['questions']}，总分 {report['points']:g}；"
@@ -163,14 +168,14 @@ def as_markdown(report: dict) -> str:
     lines.extend(["## 卷面结构", "", "| 题型 | 题数 | 分值 | 占比 |", "| --- | --- | --- | --- |"])
     for name, slot in sorted(report["types"].items(), key=lambda kv: (-kv[1]["points"], kv[0])):
         share = slot["points"] / report["points"] if report["points"] else 0
-        lines.append(f"| {name} | {slot['count']} | {slot['points']:g} | {share:.0%} |")
+        lines.append(f"| {cell(name)} | {slot['count']} | {slot['points']:g} | {share:.0%} |")
     lines.append("")
 
     lines.extend(["## 考点分布", "", "| 考点 | 题号 | 分值合计 | 教材节 |", "| --- | --- | --- | --- |"])
     for name, slot in sorted(report["concepts"].items(), key=lambda kv: (-kv[1]["points"], kv[0])):
         lines.append(
-            f"| {name} | {', '.join(slot['nos'])} | {slot['points']:g} | "
-            f"{'; '.join(slot['refs']) or '-'} |"
+            f"| {cell(name)} | {', '.join(slot['nos'])} | {slot['points']:g} | "
+            f"{cell('; '.join(slot['refs']) or '-')} |"
         )
     if not report["concepts"]:
         lines.append("| - | - | - | 暂无解剖数据 |")
@@ -178,14 +183,14 @@ def as_markdown(report: dict) -> str:
 
     lines.extend(["## 难度曲线", "", "| 题号 | 难度 | 依据 |", "| --- | --- | --- |"])
     for row in report["difficulty"]:
-        lines.append(f"| {row['no']} | {row['level']} | {row['basis']} |")
+        lines.append(f"| {row['no']} | {row['level']} | {cell(row['basis'])} |")
     if not report["difficulty"]:
         lines.append("| - | - | 暂无有效题 |")
     lines.append("")
 
     lines.extend(["## 陷阱清单", "", "| 陷阱 | 题号 | 后果 |", "| --- | --- | --- |"])
     for trap, nos in sorted(report["traps"].items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        lines.append(f"| {trap} | {', '.join(nos)} | 丢分 |")
+        lines.append(f"| {cell(trap)} | {', '.join(nos)} | 丢分 |")
     if not report["traps"]:
         lines.append("| - | - | 暂无标注 |")
     lines.append("")

@@ -171,6 +171,7 @@ def split_markdown(text: str) -> list[tuple[str, str]]:
 def build(kb_dir: Path, db: Path) -> None:
     if not kb_dir.is_dir():
         raise SystemExit(f"not a directory: {kb_dir}")
+    db.parent.mkdir(parents=True, exist_ok=True)  # .index/ 被 .gitignore 排除，首次建库要自己建
     conn = connect(db)
     files = []
     for path in sorted(kb_dir.rglob("*.md")):
@@ -269,7 +270,10 @@ def match_expression(query: str) -> str:
             if len(grams) >= 64:
                 break
         groups.append("(" + " OR ".join(f'"{g}"' for g in grams) + ")")
-    return " AND ".join(groups) if groups else '"' + normalize_math(query) + '"'
+    if groups:
+        return " AND ".join(groups)
+    # 全短词时退回整串匹配；引号会让 FTS5 语法错误，必须先剔除
+    return normalize_math(query).replace('"', " ").strip()
 
 
 def bm25_rows(conn, query: str, top: int, kind: str | None = None):
@@ -282,7 +286,10 @@ def bm25_rows(conn, query: str, top: int, kind: str | None = None):
         JOIN docs d ON d.id = c.doc_id
         WHERE chunks_fts MATCH ?
     """
-    params: list = [match_expression(query)]
+    expression = match_expression(query)
+    if not expression:
+        return []  # <3 字符且没有可匹配词元，交给 vector 分支
+    params: list = [expression]
     if kind:
         sql += " AND c.kind = ?"
         params.append(kind)

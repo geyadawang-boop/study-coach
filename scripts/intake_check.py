@@ -187,9 +187,17 @@ def main() -> int:
         print(f"not a file: {path}", file=sys.stderr)
         return 2
     if path.suffix.lower() == ".jsonl":
-        findings, summary = check_jsonl(path)
+        try:
+            findings, summary = check_jsonl(path)
+        except (UnicodeDecodeError, OSError) as exc:
+            print(f"无法读取 {path}（{type(exc).__name__}）：{exc}；请另存为 UTF-8", file=sys.stderr)
+            return 2
     else:
-        findings, summary = check_markdown(path)
+        try:
+            findings, summary = check_markdown(path)
+        except (UnicodeDecodeError, OSError) as exc:
+            print(f"无法读取 {path}（{type(exc).__name__}）：{exc}；请另存为 UTF-8", file=sys.stderr)
+            return 2
 
     if args.expect_count is not None and summary["count"] != args.expect_count:
         findings.append(finding(

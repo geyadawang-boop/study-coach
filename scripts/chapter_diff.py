@@ -12,7 +12,8 @@ Usage:
   python chapter_diff.py old.md new.md [--questions analyzed.jsonl] [--out diff.md]
   python chapter_diff.py old.pdf new.pdf --json
 
-Exit codes: 0 = diff built; 2 = input unreadable or no headings/outline.
+Exit codes: 0 = diff built; 2 = input unreadable or no headings/outline;
+3 = 缺 PyMuPDF（读 PDF 目录时）。
 """
 
 from __future__ import annotations
@@ -49,7 +50,7 @@ def load_tree(path: Path) -> list[dict]:
             if isinstance(item, dict) and str(item.get("title") or "").strip()
         ]
     elif path.suffix.lower() == ".pdf":
-        import fitz  # PyMuPDF
+        from fitz_compat import fitz  # PyMuPDF，经兼容层避免 1.28 弃用横幅污染 stdout
 
         with fitz.open(path) as doc:
             toc = doc.get_toc(simple=True)
@@ -75,11 +76,45 @@ def load_tree(path: Path) -> list[dict]:
     return tree
 
 
+def keyed(tree: list[dict]) -> list[tuple[str, dict]]:
+    """Key by ancestor path，避免各章重复的「本章小结」互相覆盖。"""
+    out: list[tuple[str, dict]] = []
+    stack: list[str] = []
+    used: dict[str, int] = {}
+    for item in tree:
+        level = max(1, int(item.get("level") or 1))
+        stack = stack[:level - 1]
+        key = normalize(">".join(stack + [str(item["title"])]))
+        count = used.get(key, 0) + 1
+        used[key] = count
+        if count > 1:
+            key = f"{key}#{count}"
+        out.append((key, item))
+        stack = stack + [str(item["title"])]
+    return out
+
+
 def diff(old: list[dict], new: list[dict]) -> dict:
-    old_by = {normalize(item["title"]): item for item in old}
-    new_by = {normalize(item["title"]): item for item in new}
-    removed = [item for key, item in old_by.items() if key not in new_by]
-    added = [item for key, item in new_by.items() if key not in old_by]
+    old_pairs, new_pairs = keyed(old), keyed(new)
+    old_keys = {key for key, _ in old_pairs}
+    new_by = dict(new_pairs)
+    matched = [(item, new_by[key]) for key, item in old_pairs if key in new_by]
+    removed = [item for key, item in old_pairs if key not in new_by]
+    added = [item for key, item in new_pairs if key not in old_keys]
+
+    # 父章改名会改变子章路径：题名完全一致时仍视为同一节，避免冒充改名
+    by_title: dict[str, list[dict]] = {}
+    for item in added:
+        by_title.setdefault(normalize(item["title"]), []).append(item)
+    old_left: list[dict] = []
+    for item in removed:
+        candidates = by_title.get(normalize(item["title"]), [])
+        if len(candidates) == 1:
+            matched.append((item, candidates[0]))
+            added.remove(candidates[0])
+        else:
+            old_left.append(item)
+    removed = old_left
 
     renames: list[dict] = []
     for old_item in list(removed):
@@ -96,9 +131,8 @@ def diff(old: list[dict], new: list[dict]) -> dict:
             added.remove(best[1])
 
     shifted = []
-    for key, new_item in new_by.items():
-        old_item = old_by.get(key)
-        if old_item and old_item.get("page") and new_item.get("page"):
+    for old_item, new_item in matched:
+        if old_item.get("page") and new_item.get("page"):
             delta = new_item["page"] - old_item["page"]
             if delta:
                 shifted.append({"title": new_item["title"],
@@ -211,7 +245,7 @@ def main() -> int:
         old_tree, new_tree = load_tree(old_path), load_tree(new_path)
     except ImportError:
         print("需要 PyMuPDF 才能读 PDF 目录：pip install pymupdf", file=sys.stderr)
-        return 2
+        return 3
     except Exception as exc:  # 损坏、加密、无目录
         print(f"无法读取章节树（{type(exc).__name__}）：{exc}", file=sys.stderr)
         return 2

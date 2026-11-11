@@ -51,6 +51,14 @@ def text(value) -> str:
     return str(value).strip() or "-"
 
 
+def count_of(value, default: int = 1) -> int:
+    """坏 count（如「三次」）按默认值处理，视图不因单条记录崩溃。"""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def card_block(card: dict) -> list[str]:
     cid = text(card.get("id"))
     title = text(card.get("title"))
@@ -111,7 +119,7 @@ def render_errors(errors: list[dict], generated: str) -> str:
     lines.append("| ID | 章节 | 错误描述 | 后果 | 正确做法 | 次数 | 首次 | 状态 |")
     lines.append("| --- | --- | --- | --- | --- | --- | --- | --- |")
     for chapter in sorted(by_chapter):
-        items = sorted(by_chapter[chapter], key=lambda e: (-int(e.get("count", 1) or 1), str(e.get("id", ""))))
+        items = sorted(by_chapter[chapter], key=lambda e: (-count_of(e.get("count", 1)), str(e.get("id", ""))))
         for item in items:
             lines.append(
                 f"| {text(item.get('id'))} | {chapter} | {text(item.get('desc'))} "
@@ -250,7 +258,7 @@ def render_snapshot(
 
     active_errors = [e for e in errors if str(e.get("status", "open")).lower() != "closed"]
     repeated = sorted(
-        active_errors, key=lambda e: -int(e.get("count", 1) or 1)
+        active_errors, key=lambda e: -count_of(e.get("count", 1))
     )[:8]
 
     latest: dict[str, tuple[tuple[str, str], dict]] = {}
@@ -365,15 +373,18 @@ def main() -> int:
                 print(f"warning: {path} 曾被手改，已覆盖；views/ 只由脚本生成", file=sys.stderr)
         path.write_text(text, encoding="utf-8")
 
-    write_view(views / "题型卡片.md", render_cards(cards, generated))
-    write_view(views / "易错点汇总.md", render_errors(errors, generated))
-    write_view(
-        views / "学情快照.md",
-        render_snapshot(cards, errors, reviews, events, sources, generated),
-    )
     backlink_text, targets, broken = render_backlinks(kb, cards, errors, confusions, generated)
-    write_view(views / "双链反查.md", backlink_text)
-    write_view(kb / "02-资料清单.md", render_sources(sources, generated))
+    # 先全部渲染完再落盘：单张视图渲染失败时不留半新半旧的文件集
+    rendered = [
+        (views / "题型卡片.md", render_cards(cards, generated)),
+        (views / "易错点汇总.md", render_errors(errors, generated)),
+        (views / "学情快照.md",
+         render_snapshot(cards, errors, reviews, events, sources, generated)),
+        (views / "双链反查.md", backlink_text),
+        (kb / "02-资料清单.md", render_sources(sources, generated)),
+    ]
+    for path, content in rendered:
+        write_view(path, content)
 
     skipped = (
         skipped_cards + skipped_errors + skipped_sources + skipped_reviews

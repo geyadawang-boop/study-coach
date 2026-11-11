@@ -33,7 +33,7 @@ def sample_pages(total: int, count: int) -> list[int]:
 
 
 def probe(path: Path, count: int, min_chars: int) -> dict:
-    import fitz  # PyMuPDF
+    from fitz_compat import fitz  # PyMuPDF，经兼容层避免 1.28 弃用横幅污染 stdout
 
     with fitz.open(path) as doc:
         total = doc.page_count
@@ -43,8 +43,15 @@ def probe(path: Path, count: int, min_chars: int) -> dict:
             page = doc.load_page(number - 1)
             raw = page.get_text("text") or ""
             chars = len("".join(raw.split()))
-            replacement = raw.count("\ufffd")
-            garbled = chars > 0 and replacement / chars > 0.3
+            if chars:
+                replacement = raw.count("\ufffd") / chars
+                tofu = raw.count("□") / chars
+                private = sum(1 for ch in raw if 0xE000 <= ord(ch) <= 0xF8FF) / chars
+                latin1 = sum(1 for ch in raw if 0x80 <= ord(ch) <= 0xFF) / chars
+                garbled = (replacement > 0.3 or tofu > 0.1
+                           or private > 0.1 or latin1 > 0.15)  # 乱码/豆腐块/私用区/拉丁-1 乱码
+            else:
+                garbled = False
             rows.append({
                 "page": number,
                 "chars": chars,

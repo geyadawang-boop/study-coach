@@ -7,7 +7,7 @@
 | 依赖 | 状态 | 用途 | 处置 |
 | --- | --- | --- | --- |
 | `sqlite3` | 已装（标准库） | FTS5 检索索引 | 直接可用 |
-| `fitz`（PyMuPDF） | 已装 1.28.0 | PDF 文本层与页码提取；`scripts/pdf_probe.py` 用它做 A/B 链路判定 | 直接可用，优先于 OCR |
+| `fitz`（PyMuPDF） | 已装 1.28.0 | PDF 文本层与页码提取；`scripts/pdf_probe.py` 用它做 A/B 链路判定 | 直接可用，优先于 OCR；统一经 `scripts/fitz_compat.py` 导入，避免 1.28 的 `import fitz` 弃用横幅污染 stdout |
 | `PIL` | 已装 | 图片裁切与预处理 | 直接可用 |
 | `sympy` | 已装 | 答案符号校验、等价变形检查 | 默认按 Python 语法；`--latex` 需 antlr4（未装），缺失时退出码 3 |
 | `numpy` / `pandas` / `openpyxl` | 已装 | 成绩与失分分布统计 | 按需 |
@@ -18,6 +18,8 @@
 | `pix2tex` | 未装 | 纯公式图片转 LaTeX | 优先让多模态模型直接读图 |
 
 未装的两项不预装。缺什么由实际卡点触发，不提前铺。
+
+Windows 提示：脚本读写文件固定 UTF-8；若控制台或管道里的中文乱码，先设 `$env:PYTHONUTF8="1"` 再运行。不要改系统全局编码，避免影响其他程序。
 
 ## 分层选型
 

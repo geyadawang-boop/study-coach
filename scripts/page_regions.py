@@ -270,8 +270,12 @@ def question_no(text: str) -> int | None:
     return value if 1 <= value <= MAX_NUMBER else None
 
 
-def increasing_run(items: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Keep the longest run of starts whose numbers strictly increase."""
+def increasing_runs(items: list[tuple[int, int]]) -> list[list[tuple[int, int]]]:
+    """Split starts into runs whose numbers strictly increase.
+
+    A paper often restarts numbering per 大题; keeping only the longest run
+    would silently drop every later section, so callers get all runs.
+    """
     runs: list[list[tuple[int, int]]] = []
     current: list[tuple[int, int]] = []
     for item in items:
@@ -279,8 +283,9 @@ def increasing_run(items: list[tuple[int, int]]) -> list[tuple[int, int]]:
             runs.append(current)
             current = []
         current.append(item)
-    runs.append(current)
-    return max(runs, key=len)
+    if current:
+        runs.append(current)
+    return runs
 
 
 def _ocr_gap(image: Path, box: tuple[int, int, int, int], scale: int = 3) -> list[dict]:
@@ -399,14 +404,21 @@ def suggest_regions(pages: list[tuple[int, list[dict]]]) -> tuple[list[dict], li
     for _, lines in pages:
         for group in split_columns(lines):
             flat.extend(group)
-    starts = increasing_run(
+    starts: list[tuple[int, int]] = []
+    runs = increasing_runs(
         [(index, number) for index, line in enumerate(flat)
          if (number := question_no(line["text"]))]
     )
+    warnings: list[str] = []
+    if len(runs) > 1:
+        warnings.append(
+            f"题号出现 {len(runs)} 段回退（多为按大题重新编号），已分段提案，请逐段复核"
+        )
+    for run in runs:
+        starts.extend(run)
     if not starts:
         return [], ["未识别到题号"]
     regions: list[dict] = []
-    warnings: list[str] = []
     for position, (start, number) in enumerate(starts):
         end = starts[position + 1][0] - 1 if position + 1 < len(starts) else len(flat) - 1
         block = flat[start:end + 1]
@@ -427,7 +439,7 @@ def suggest_regions(pages: list[tuple[int, list[dict]]]) -> tuple[list[dict], li
             item["bbox_end"] = padded(union_box(tail))
             if last_page - first_page > 1:
                 warnings.append(
-                    f"题 {number} 跨 {last_page - first_page + 1} 页，中间页未裁，请手工补"
+                    f"题 {number} 跨 {last_page - first_page + 1} 页，中间页将按整页裁图拼接，请复核"
                 )
         regions.append(item)
     return regions, warnings
@@ -440,6 +452,7 @@ def validate(data: dict, page_count: int) -> tuple[list[dict], list[str]]:
     regions: list[dict] = []
     warnings: list[str] = []
     seen: dict[str, int] = {}
+    seen_slug: dict[str, str] = {}
     for index, item in enumerate(data["regions"], 1):
         if not isinstance(item, dict):
             raise ValueError(f"第 {index} 个 region 不是对象")
@@ -449,6 +462,12 @@ def validate(data: dict, page_count: int) -> tuple[list[dict], list[str]]:
         if no in seen:
             raise ValueError(f"题号重复：{no}（第 {seen[no]} 与第 {index} 个 region）")
         seen[no] = index
+        slug = safe_no(no)
+        if slug in seen_slug:
+            raise ValueError(
+                f"题号 {seen_slug[slug]} 与 {no} 映射到同一裁图文件名 Q{slug}，请改题号"
+            )
+        seen_slug[slug] = no
         try:
             page = int(item.get("page"))
         except (TypeError, ValueError):
@@ -468,6 +487,10 @@ def validate(data: dict, page_count: int) -> tuple[list[dict], list[str]]:
             if end == page:
                 warnings.append(f"区域 {no} 的 page_end 与 page 相同，已按单页处理")
                 bbox_end = None
+            elif end - page > 1:
+                warnings.append(
+                    f"区域 {no} 跨 {end - page + 1} 页，中间 {end - page - 1} 页按整页裁图拼接，请复核"
+                )
         area = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
         if area > 0.92:
             warnings.append(f"区域 {no} 占整页 {area:.0%}，若含多题请拆细")
@@ -525,8 +548,8 @@ def main() -> int:
     image = None
     if is_image:
         try:
-            from PIL import Image
-            image = Image.open(path)
+            from PIL import Image, ImageOps
+            image = ImageOps.exif_transpose(Image.open(path))  # 手机照片按 EXIF 摆正后再定尺寸/裁图
             page_count = 1
         except ImportError:
             print("处理图片需要 Pillow：pip install pillow", file=sys.stderr)
@@ -536,7 +559,7 @@ def main() -> int:
             return 2
     else:
         try:
-            import fitz
+            from fitz_compat import fitz
         except ImportError:
             print("需要 PyMuPDF：pip install pymupdf", file=sys.stderr)
             return 3
@@ -611,7 +634,11 @@ def main() -> int:
                     with tempfile.TemporaryDirectory() as tmp:
                         for page_no in pages:
                             if is_image:
-                                lines = with_gap_recovery(path, ocr_image_lines(path, 1))
+                                normalized = Path(tmp) / "suggest-input.png"
+                                image.save(normalized)  # OCR 与行框统一用摆正后的图
+                                lines = with_gap_recovery(
+                                    normalized, ocr_image_lines(normalized, 1)
+                                )
                             else:
                                 lines = text_layer_lines(doc, page_no)
                                 chars = sum(len(line["text"]) for line in lines)
@@ -669,6 +696,10 @@ def main() -> int:
             except Exception as exc:
                 print(f"regions 无效（{type(exc).__name__}）：{exc}", file=sys.stderr)
                 return 2
+            if not regions:
+                print("regions 为空：请先按 --template 填写 bbox，或用 --suggest 自动提案",
+                      file=sys.stderr)
+                return 1
 
             paper = str(data.get("paper") or path.stem)
             fig = Path(args.fig)
@@ -688,6 +719,12 @@ def main() -> int:
                 conf = 1.0
                 flags: list[str] = []
                 if region["bbox_end"]:
+                    for middle in range(region["page"] + 1, region["page_end"]):
+                        mid = fig / f"P{middle:03d}-Q{safe_no(no)}.png"
+                        crop(doc, middle, [0.0, 0.0, 1.0, 1.0], args.dpi, mid)
+                        images.append(mid.as_posix())
+                        mid_text = text_of(doc, middle, [0.0, 0.0, 1.0, 1.0])
+                        text = "\n".join(part for part in (text, mid_text) if part)
                     second = fig / f"P{region['page_end']:03d}-Q{safe_no(no)}.png"
                     crop(doc, region["page_end"], region["bbox_end"], args.dpi, second)
                     images.append(second.as_posix())
@@ -712,8 +749,6 @@ def main() -> int:
                         conf = 0.0
                         flags.append("待核")
 
-                if source == "regions-text" and len(text) < args.min_chars:
-                    flags.append("待核")
                 flags = list(dict.fromkeys(flags))
                 if flags:
                     pending += 1

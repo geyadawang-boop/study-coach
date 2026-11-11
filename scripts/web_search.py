@@ -266,13 +266,15 @@ def run(args: argparse.Namespace) -> tuple[dict, int]:
                                  "reason": reason, "resultCount": 0})
                 continue
 
-        blocked = detect_challenge(page)
-        if blocked:
-            attempts.append({"provider": PROVIDERS[name], "status": "blocked",
-                             "reason": blocked, "resultCount": 0})
-            continue
-
         raw = parse_brave(page) if name == "brave" else parse_yahoo(page)
+        if not raw:
+            # 只在解析不到结果时查反爬：正常结果页正文出现 captcha 字样不算被拦
+            blocked = detect_challenge(page)
+            if blocked:
+                attempts.append({"provider": PROVIDERS[name], "status": "blocked",
+                                 "reason": blocked, "resultCount": 0})
+                continue
+
         unique: list[dict] = []
         seen: set[str] = set()
         for item in raw:

@@ -65,7 +65,13 @@ def yaml_scalar(value: object) -> str:
     text = "" if value is None else str(value)
     if text == "":
         return '""'
-    if re.search(r'[:#\[\]{}&*!|>\'"%@`]', text) or text.strip() != text:
+    if (
+        re.search(r'[:#\[\]{}&*!|>\'"%@`]', text)
+        or text.strip() != text
+        or re.match(r"^[\-?:,\[\]{}&*!|>'\"%@`]", text)  # 前导符号会被当成列表/键
+        or re.fullmatch(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?", text)
+        or text.lower() in {"true", "false", "yes", "no", "on", "off", "null", "~"}
+    ):
         return json.dumps(text, ensure_ascii=False)
     return text
 

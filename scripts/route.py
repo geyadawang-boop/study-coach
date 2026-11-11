@@ -143,8 +143,9 @@ INTENTS = [
         "phrases": [
             "两栏试卷怎么切题", "题目跨页了怎么裁", "按 bbox 裁图逐区取文",
             "渲染页面给模型定坐标", "多栏排版不能用题号重排猜边界",
+            "这卷子是左右两栏还有一题连到下一页",
         ],
-        "keys": ["多栏", "跨页", "bbox", "裁图"],
+        "keys": ["多栏", "跨页", "bbox", "裁图", "两栏", "分栏", "连到下一页"],
     },
     {
         "id": "review-schedule",
@@ -455,6 +456,9 @@ def main() -> int:
         print("需要一句用户原话，或用 --eval", file=sys.stderr)
         return 2
     ranked = rank(args.query)
+    if not ranked or ranked[0]["score"] <= 0:
+        print(f"no match: {args.query}", file=sys.stderr)
+        return 1
     if args.json:
         print(json.dumps({"query": args.query, "ranked": ranked[:args.top]},
                          ensure_ascii=False, indent=2))

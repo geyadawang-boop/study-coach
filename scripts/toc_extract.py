@@ -13,7 +13,8 @@ Usage:
   python toc_extract.py book.pdf --pages 2-4 --json
   python toc_extract.py book.pdf --pages 2-4 --mode ocr --dpi 220
 
-Exit codes: 0 = tree built; 1 = no TOC lines recognised; 2 = input unreadable.
+Exit codes: 0 = tree built; 1 = no TOC lines recognised; 2 = input unreadable;
+3 = 缺 PyMuPDF / RapidOCR。
 """
 
 from __future__ import annotations
@@ -47,32 +48,77 @@ def parse_pages(value: str) -> list[int]:
     return sorted(set(pages))
 
 
+def merge_rows(items: list[dict]) -> list[dict]:
+    """Merge same-row fragments so right-aligned page numbers join their title.
+
+    Only digit-only fragments are appended; two real titles that happen to
+    share a row (two-column TOC) stay separate lines.
+    """
+    rows: list[dict] = []
+    for item in items:
+        x0, y0, x1, y1 = item["box"]
+        for row in rows:
+            ry0, ry1 = row["box"][1], row["box"][3]
+            overlap = min(y1, ry1) - max(y0, ry0)
+            shorter = max(1e-6, min(y1 - y0, ry1 - ry0))
+            if overlap / shorter >= 0.6:
+                row["box"] = [min(row["box"][0], x0), min(ry0, y0),
+                              max(row["box"][2], x1), max(ry1, y1)]
+                row["parts"].append(item)
+                break
+        else:
+            rows.append({"box": [x0, y0, x1, y1], "parts": [item]})
+
+    merged: list[dict] = []
+    for row in sorted(rows, key=lambda r: (r["box"][1], r["box"][0])):
+        parts = sorted(row["parts"], key=lambda p: p["box"][0])
+        text = parts[0]["text"]
+        score = parts[0]["score"]
+        page = parts[0]["page"]
+        for part in parts[1:]:
+            if re.fullmatch(r"[.·…\s]*\d{1,4}", part["text"]):
+                text = f"{text} {part['text']}"
+                score = min(score, part["score"])
+            else:
+                merged.append({"text": text, "score": score, "page": page})
+                text, score, page = part["text"], part["score"], part["page"]
+        merged.append({"text": text, "score": score, "page": page})
+    return merged
+
+
 def text_lines(path: Path, pages: list[int]) -> tuple[list[dict], bool]:
     """Return [{text, score, page}], used_text_layer."""
-    import fitz
+    from fitz_compat import fitz  # PyMuPDF，经兼容层避免 1.28 弃用横幅污染 stdout
 
     lines: list[dict] = []
     with fitz.open(path) as doc:
         for page_no in pages:
             if page_no < 1 or page_no > doc.page_count:
                 raise ValueError(f"page {page_no} 超出范围 1..{doc.page_count}")
-            text = doc.load_page(page_no - 1).get_text("text")
-            for line in text.splitlines():
-                if line.strip():
-                    lines.append({"text": line, "score": 1.0, "page": page_no})
+            page = doc.load_page(page_no - 1)
+            items: list[dict] = []
+            for block in page.get_text("dict").get("blocks", []):
+                for line in block.get("lines", []):
+                    text = "".join(span.get("text", "") for span in line.get("spans", "")).strip()
+                    if text:
+                        items.append({"text": text, "score": 1.0, "page": page_no,
+                                      "box": [float(v) for v in line["bbox"]]})
+            lines.extend(merge_rows(items))
     return lines, bool(lines)
 
 
 def ocr_lines(path: Path, pages: list[int], dpi: int) -> list[dict]:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from ocr_page import run_ocr, to_image
+    from ocr_page import run_ocr_lines, to_image
 
     lines: list[dict] = []
     with tempfile.TemporaryDirectory() as tmp:
         for page_no in pages:
             image = to_image(path, page_no, dpi, Path(tmp) / f"p{page_no}.png")
-            for row in run_ocr(image):
-                lines.append({"text": row["text"], "score": row["score"], "page": page_no})
+            items = [{"text": row["text"], "score": row["score"], "page": page_no,
+                      "box": [float(v) for v in row["box"]]}
+                     for row in run_ocr_lines(image) if row["text"]]
+            lines.extend(merge_rows(items))
     return lines
 
 
@@ -123,6 +169,11 @@ def parse_tree(lines: list[dict]) -> tuple[list[dict], list[dict], list[dict], l
 
     if not tree:
         warnings.append("未识别到可用的「第X章 标题 / 1.1 标题」目录行")
+    missing_page = sum(1 for row in tree if row["page"] is None)
+    if missing_page:
+        warnings.append(
+            f"{missing_page} 行缺页码，chapter_diff 的页码偏移检测不可用；请按 raw 核对目录版式"
+        )
     if pending:
         warnings.append(f"{len(pending)} 行置信度低于 {LOW_CONF}，请校对后再用")
     if suspects:
@@ -154,10 +205,10 @@ def main() -> int:
         print(f"--pages 无效：{exc}", file=sys.stderr)
         return 2
     try:
-        import fitz  # noqa: F401
+        from fitz_compat import fitz  # noqa: F401
     except ImportError:
         print("需要 PyMuPDF：pip install pymupdf", file=sys.stderr)
-        return 2
+        return 3
 
     try:
         if args.mode == "text":
@@ -167,10 +218,13 @@ def main() -> int:
         else:
             lines, has_text = text_lines(path, pages)
             lines = lines if has_text else ocr_lines(path, pages, args.dpi)
-    except ImportError:
-        print("OCR 需要 rapidocr_onnxruntime：pip install rapidocr_onnxruntime",
-              file=sys.stderr)
-        return 2
+    except ImportError as exc:
+        if "fitz" in str(exc).lower() or "pymupdf" in str(exc).lower():
+            print("需要 PyMuPDF：pip install pymupdf", file=sys.stderr)
+        else:
+            print("OCR 需要 rapidocr_onnxruntime：pip install rapidocr_onnxruntime",
+                  file=sys.stderr)
+        return 3
     except Exception as exc:  # 损坏、加密、页码越界
         print(f"无法读取目录页（{type(exc).__name__}）：{exc}", file=sys.stderr)
         return 2

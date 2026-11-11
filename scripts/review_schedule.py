@@ -235,6 +235,10 @@ def main() -> int:
         warnings.append("未安装 fsrs，自动降级为四档阶梯（1/3/7/16，连对 35 天）")
 
     selected = list(args.card or sorted(by_card))
+    if not args.card:
+        for card_id in sorted(known):  # 零复习的新卡也要出现在排期里
+            if card_id not in selected:
+                selected.append(card_id)
     for card_id, _ in grades:
         if card_id not in selected:
             selected.append(card_id)
@@ -242,7 +246,8 @@ def main() -> int:
     cards_out: list[dict] = []
     states: dict[str, dict] = {}
     for card_id in selected:
-        history = by_card.get(card_id, [])
+        history = sorted(by_card.get(card_id, []), key=lambda r: (
+            str(r.get("ts") or ""), str(r.get("id") or "")))  # 协议要求按 ts 顺序重建状态
         if card_id not in known:
             warnings.append(f"{card_id} 不在 cards.jsonl 中，按新卡排期")
         if engine == "fsrs":
@@ -255,7 +260,7 @@ def main() -> int:
             ratings = [int(r.get("rating")) for r in history
                        if str(r.get("rating", "")).isdigit() and int(r.get("rating")) in LADDER]
             interval = ladder_interval(ratings) if ratings else 0
-            last = max((str(r.get("ts") or "") for r in history), default="")
+            last = str(history[-1].get("ts") or "") if history else ""
             due = (review_time(last) or at) + timedelta(days=interval) if ratings else None
             info = {
                 "card_id": card_id, "reviews": len(ratings), "state": "ladder", "step": None,

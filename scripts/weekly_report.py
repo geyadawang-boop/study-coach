@@ -94,15 +94,21 @@ def build(kb: Path, end: date, days: int) -> tuple[dict, list[str]]:
                if as_float(row.get("rating")) > 0]
     rating_dist = Counter(ratings)
     step_stats: dict[int, list[float]] = defaultdict(list)
-    latest_due: dict[str, date] = {}
-    for row in buckets["reviews"]:
+    latest_due: dict[str, tuple[tuple[date, int], date]] = {}
+    for order, row in enumerate(buckets["reviews"]):
         card = str(row.get("card_id") or "")
         due = day_of(row.get("due"))
-        if card and due and due <= end:
-            latest_due[card] = max(due, latest_due.get(card, due))
+        seen = day_of(row.get("ts"))
+        if card and due and (seen is None or seen <= end):
+            # 卡片可能被推迟：以 ts 最后一条 review 的 due 为准，文件名顺序不算数
+            key = (seen or date.min, order)
+            if card not in latest_due or key >= latest_due[card][0]:
+                latest_due[card] = (key, due)
+    for row in reviews:  # 只统计窗口内的步骤分，避免历史拉低本周均分
         for index, score in enumerate(row.get("step_scores") or [], 1):
             if isinstance(score, (int, float)):
                 step_stats[index].append(float(score))
+    due_cards = sorted(card for card, (_, due) in latest_due.items() if due <= end)
 
     step_rows = [
         {"step": index, "avg": sum(scores) / len(scores), "n": len(scores)}
@@ -128,8 +134,8 @@ def build(kb: Path, end: date, days: int) -> tuple[dict, list[str]]:
             "rating_dist": {str(k): v for k, v in sorted(rating_dist.items())},
             "steps": step_rows,
             "weakest_step": weakest,
-            "due": sorted(latest_due)[:10],
-            "due_count": len(latest_due),
+            "due": due_cards[:10],
+            "due_count": len(due_cards),
         },
         "errors": {
             "new": len(errors),
@@ -179,13 +185,13 @@ def as_markdown(report: dict) -> str:
             lines.append(
                 f"- 最弱步骤：第 {weakest['step']} 步（均分 {weakest['avg']:.2f}，{weakest['n']} 次）"
             )
-        if report["reviews"]["due_count"]:
-            lines.append(
-                f"- 已到期卡片：{report['reviews']['due_count']} 张（"
-                + "、".join(report["reviews"]["due"]) + "）"
-            )
     else:
         lines.append("- 本周无复习记录")
+    if report["reviews"]["due_count"]:
+        lines.append(
+            f"- 已到期卡片：{report['reviews']['due_count']} 张（"
+            + "、".join(report["reviews"]["due"]) + "）"
+        )
     lines.append("")
 
     lines.append("## 错题与困惑")

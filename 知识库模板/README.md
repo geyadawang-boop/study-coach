@@ -34,7 +34,7 @@ python scripts/kb_index.py search 学习库/.index/index.db "有理化" --top 5
 | `01-知识地图.md` | 知识点、前置、状态、证据 | 知识地图阶段 |
 | `02-资料清单.md` | 由 `records/sources.jsonl` 渲染 | `kb_view.py` |
 | `notes/` | 讲义、真题、复盘正文 | 模型写，用户改 |
-| `records/` | 卡片、错题、困惑、复习、事件、纠错、资料 | 只追加 |
+| `records/` | 卡片、错题、困惑、复习、事件、纠错、资料 | 追加为主，状态字段可更新 |
 | `views/` | 人读汇总 | 脚本生成，不手改 |
 | `.index/` | FTS5 检索缓存 | `kb_index.py`，可删 |
 | `fig/` | 题目图、函数图 | 导入/裁图脚本 |
@@ -51,6 +51,6 @@ python scripts/kb_index.py search 学习库/.index/index.db "有理化" --top 5
 
 1. `views/` 不手改，改了下次生成会被覆盖。
 2. `.index/` 丢了不影响任何数据，删除后重建即可。
-3. `records/` 只追加；更正用新记录加 `supersedes`，ID 永不复用。
+3. `records/` 追加为主（`errors.count`、`confusions.ask_count`、`status` 可原地更新）；事实更正用新记录加 `supersedes`，ID 永不复用。
 
 存储字段与掌握度规则见 `references/knowledge-base.md`。

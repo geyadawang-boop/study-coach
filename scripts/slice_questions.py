@@ -62,9 +62,14 @@ def read_lines(path: Path) -> tuple[list[dict], list[str]]:
         page_no = page.get("page")
         for row in page["lines"]:
             if isinstance(row, dict):
+                raw_score = row.get("score")
+                try:
+                    score = 1.0 if raw_score is None else float(raw_score)
+                except (TypeError, ValueError):
+                    score = 1.0
                 lines.append({
                     "text": str(row.get("text") or ""),
-                    "score": float(row.get("score") or 1.0),
+                    "score": score,
                     "page": page_no,
                 })
     if not lines:

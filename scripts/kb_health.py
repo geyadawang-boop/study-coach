@@ -17,7 +17,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 ID_SPEC = {
@@ -78,12 +78,24 @@ def load_jsonl(path: Path) -> tuple[list[dict], list[tuple[int, str]]]:
 def _tail(rows: list, limit: int) -> tuple[list, str]:
     if len(rows) <= limit:
         return rows, ""
-    return rows[:limit], f"（另有 {len(rows) - limit} 条同类，略）"
+    return rows[:limit], "，略"
+
+
+def old_enough(value: str, cutoff: date) -> bool:
+    """缺 ts 的卡不算老化：没有时间证据时不误报。"""
+    try:
+        return date.fromisoformat(value[:10]) < cutoff
+    except ValueError:
+        return False
 
 
 def check(kb: Path, today: str | None = None) -> Report:
     rep = Report()
     today = today or date.today().isoformat()
+    try:
+        today_date = date.fromisoformat(today)
+    except ValueError:
+        raise ValueError(f"--today 不是 YYYY-MM-DD：{today}") from None
 
     if not kb.is_dir():
         rep.add("error", "kb_missing", f"学习库不存在：{kb}")
@@ -248,24 +260,20 @@ def check(kb: Path, today: str | None = None) -> Report:
             elif view.stat().st_mtime < newest_record - 1:
                 rep.add("info", "view_stale", f"{view.name} 比 records/ 旧，建议重跑 kb_view.py")
 
-    try:
-        horizon = (datetime.fromisoformat(today) - timedelta(days=30)).date().isoformat()
-    except ValueError:
-        horizon = ""
-    if horizon:
-        reviewed = {str(r.get("card_id") or "") for r in reviews}
-        aging = [
-            str(c.get("id"))
-            for c in cards
-            if str(c.get("status", "hypothesis")).lower() == "hypothesis"
-            and str(c.get("id")) not in reviewed
-            and str(c.get("ts") or "") < horizon
-        ]
-        shown, more = _tail(aging, 10)
-        for cid in shown:
-            rep.add("info", "card_aging", f"{cid} 超过 30 天既未验证也未复习")
-        if more:
-            rep.add("info", "card_aging", f"另有 {len(aging) - 10} 张卡同样滞留{more}")
+    cutoff = today_date - timedelta(days=30)
+    reviewed = {str(r.get("card_id") or "") for r in reviews}
+    aging = [
+        str(c.get("id"))
+        for c in cards
+        if str(c.get("status", "hypothesis")).lower() == "hypothesis"
+        and str(c.get("id")) not in reviewed
+        and old_enough(str(c.get("ts") or ""), cutoff)
+    ]
+    shown, more = _tail(aging, 10)
+    for cid in shown:
+        rep.add("info", "card_aging", f"{cid} 超过 30 天既未验证也未复习")
+    if more:
+        rep.add("info", "card_aging", f"另有 {len(aging) - 10} 张卡同样滞留{more}")
 
     if not any(data.values()):
         rep.add("info", "kb_empty", "学习库为空（首次使用正常），没有可检查的记录")
@@ -301,7 +309,11 @@ def main() -> int:
     except (AttributeError, ValueError):
         pass
 
-    rep = check(Path(args.kb_dir), args.today)
+    try:
+        rep = check(Path(args.kb_dir), args.today)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     if args.json:
         payload = {
             "errors": rep.count("error"),

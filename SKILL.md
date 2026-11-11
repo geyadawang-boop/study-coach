@@ -102,7 +102,7 @@ description: "通用备考与学习教练，适用于任何有教材和考试的
 - **纠错回流**：用户指出讲错时，按"改笔记 → 新建卡片并 supersede → 补同考点题 → 记 AI 易错模式"四步处理，不静默改口。
 - **本地优先**：教材、真题、手写作业不外传；外部检索只发必要片段，不整页上传。
 - **预算内推进**：超预算按降级顺序砍任务，不无限加练。
-- **存储纪律**：`views/` 不手改，只由脚本生成；`.index/` 可随时删除重建；`records/` 只追加，更正用新记录加 `supersedes`；ID 永不复用。
+- **存储纪律**：`views/` 不手改，只由脚本生成；`.index/` 可随时删除重建；`records/` 追加为主（`errors.count`、`confusions.ask_count`、卡片/错题 `status` 可原地更新），事实更正用新记录加 `supersedes`；ID 永不复用。
 - **三态声明**：每次改文件、改索引或改外部副本后，明确说「已应用 / 部分应用 / 需手工」；部分应用要列出未完成项和原因，不把建议说成已改。
 - **外部副本不是真相**：飞书、Obsidian、Excel 里的修改必须回写 `records/` 才算生效；推送顺序是 records → views → 外部副本。
 - **学科约定下沉**：记号、公式渲染、禁用工具、题型术语写进 `subjects/<学科>/`，不写进主循环。
@@ -114,7 +114,7 @@ description: "通用备考与学习教练，适用于任何有教材和考试的
 | 首次使用、收资料、标定层级、冲突裁决 | `references/source-layers.md` |
 | 要开一讲、排讲义、设计自测 | `references/lecture-and-drill.md` |
 | 导入 PDF/扫描件/拍照试卷并结构化 | `references/paper-intake.md` |
-| 判定 PDF 该走文本层还是 OCR（A/B 链路） | `scripts/pdf_probe.py` |
+| 判定 PDF 该走文本层还是 OCR（A/B 链路） | `scripts/pdf_probe.py`（PyMuPDF 统一经 `scripts/fitz_compat.py` 导入） |
 | 扫描页/拍照单页 OCR（B/C 链路，标待核） | `scripts/ocr_page.py` |
 | 切题质检、schema/题数/总分/题型分布核对 | `scripts/intake_check.py` |
 | 从页面文本/OCR 结果切出题目草稿（标待核与疑似边界） | `scripts/slice_questions.py` |
@@ -181,7 +181,7 @@ description: "通用备考与学习教练，适用于任何有教材和考试的
   progress.md
 ```
 
-`notes/` 是叙述层，`records/` 是结构化记录层（只追加），`views/` 与 `.index/` 都是可重建的派生层。`02-资料清单.md` 是从 `records/sources.jsonl` 渲染出来的视图，不手改。
+`notes/` 是叙述层，`records/` 是结构化记录层（追加为主，状态字段可原地更新），`views/` 与 `.index/` 都是可重建的派生层。`02-资料清单.md` 是从 `records/sources.jsonl` 渲染出来的视图，不手改。
 
 `progress.md` 只存指针：当前阶段、最近一讲、下一入口、未闭环缺口、最近事件 ID。每完成一讲或一卷就更新，便于换会话续接。
 

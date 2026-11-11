@@ -152,7 +152,7 @@ def render_md(data: dict) -> str:
     ]
     if data["formulas"]:
         lines += table_md(
-            ["公式 / 方法", "适用条件", "常见误用"],
+            ["公式 / 方法", "失效边界", "做法"],
             [[f["title"], f["condition"], f["method"]] for f in data["formulas"]],
         )
     else:
@@ -231,7 +231,7 @@ def render_html(data: dict) -> str:
     ]
     if data["formulas"]:
         parts.append(html_table(
-            ["公式 / 方法", "适用条件", "常见误用"],
+            ["公式 / 方法", "失效边界", "做法"],
             [[f["title"], f["condition"], f["method"]] for f in data["formulas"]],
         ))
     else:
@@ -298,20 +298,21 @@ def main() -> int:
     outdir = Path(args.outdir) if args.outdir else kb / "views"
     md_path = outdir / "速查表.md"
     html_path = outdir / "速查表.html"
-    if not args.dry_run:
+    gate = bool(data["confusions"] or data["traps"])
+    if not args.dry_run and gate:  # 不合格不落盘，避免把残表当成可交付物
         outdir.mkdir(parents=True, exist_ok=True)
         if args.format in {"md", "both"}:
             md_path.write_text(md, encoding="utf-8")
         if args.format in {"html", "both"}:
             html_path.write_text(html_text, encoding="utf-8")
 
-    gate = bool(data["confusions"] or data["traps"])
     summary = {
         "kb": kb.as_posix(),
         "md": md_path.as_posix(),
         "html": html_path.as_posix(),
         "counts": {key: len(value) for key, value in data.items()},
         "gate": gate,
+        "written": bool(gate and not args.dry_run),
         "skippedLines": meta["skippedLines"],
         "bytes": len(md.encode("utf-8")) + len(html_text.encode("utf-8")),
         "dryRun": args.dry_run,

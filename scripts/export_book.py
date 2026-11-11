@@ -20,10 +20,11 @@ from datetime import datetime
 from pathlib import Path
 
 
-def load(path: Path) -> list[dict]:
+def load(path: Path) -> tuple[list[dict], int]:
     rows: list[dict] = []
+    skipped = 0
     if not path.exists():
-        return rows
+        return rows, skipped
     with path.open(encoding="utf-8-sig") as handle:
         for line in handle:
             line = line.strip()
@@ -32,10 +33,13 @@ def load(path: Path) -> list[dict]:
             try:
                 item = json.loads(line)
             except json.JSONDecodeError:
+                skipped += 1
                 continue
             if isinstance(item, dict):
                 rows.append(item)
-    return rows
+            else:
+                skipped += 1
+    return rows, skipped
 
 
 def text(value) -> str:
@@ -56,25 +60,37 @@ def matches(card: dict, keyword: str | None) -> bool:
     return keyword.lower() in haystack
 
 
+def count_of(value, default: int = 1) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def build(kb: Path, concept: str | None, errors_only: bool, limit: int | None):
     cards = []
+    skipped = 0
     if not errors_only:
+        rows, bad = load(kb / "records" / "cards.jsonl")
+        skipped += bad
         cards = [
-            card for card in load(kb / "records" / "cards.jsonl")
+            card for card in rows
             if str(card.get("status", "")).lower() != "retired" and matches(card, concept)
         ]
         cards.sort(key=lambda c: str(c.get("id", "")))
         if limit:
             cards = cards[:limit]
 
+    rows, bad = load(kb / "records" / "errors.jsonl")
+    skipped += bad
     errors = [
-        item for item in load(kb / "records" / "errors.jsonl")
+        item for item in rows
         if str(item.get("status", "open")).lower() != "closed"
     ]
-    errors.sort(key=lambda e: (-int(e.get("count", 1) or 1), str(e.get("id", ""))))
+    errors.sort(key=lambda e: (-count_of(e.get("count", 1)), str(e.get("id", ""))))
     if limit:
         errors = errors[:limit]
-    return cards, errors
+    return cards, errors, skipped
 
 
 def as_markdown(
@@ -258,7 +274,12 @@ def main() -> int:
     args = parser.parse_args()
 
     kb = Path(args.kb)
-    cards, errors = build(kb, args.concept, args.errors_only, args.max)
+    cards, errors, skipped = build(kb, args.concept, args.errors_only, args.max)
+    if skipped:
+        print(f"警告：跳过 {skipped} 行无法解析的记录", file=sys.stderr)
+    if not cards and not errors:
+        print("库为空（cards.jsonl 与 errors.jsonl 均无可用记录），未生成习题册", file=sys.stderr)
+        return 1
     out = Path(args.out) if args.out else kb / "views" / f"习题册.{args.format}"
     out.parent.mkdir(parents=True, exist_ok=True)
     body = as_html(cards, errors, args.concept, args.errors_only) if args.format == "html" else as_markdown(

@@ -63,6 +63,12 @@ def section(text: str, aliases: tuple[str, ...]) -> str:
     return ""
 
 
+def section_body(text: str, aliases: tuple[str, ...]) -> str:
+    """Section content without its heading line."""
+    body = section(text, aliases)
+    return "\n".join(body.splitlines()[1:]).strip()
+
+
 def count_items(body: str) -> int:
     return len(re.findall(r"^\s*(?:\d+[.、)]|[①②③④⑤⑥⑦⑧⑨⑩])", body, re.M))
 
@@ -132,10 +138,15 @@ def check_followup(text: str) -> dict:
     if stats["表格行数"] < 1:
         missing.append("对比表")
 
-    if not any("一句话" in t or "总结" in t for _, t in items):
+    summary_titles = [title for _, title in items if "一句话" in title or "总结" in title]
+    if not summary_titles:
         missing.append("一句话总结")
-    elif not (items and ("一句话" in items[-1][1] or "总结" in items[-1][1])):
-        missing.append("结尾一句话总结")
+    else:
+        stats["结论字数"] = max(len(section_body(text, (title,))) for title in summary_titles)
+        if stats["结论字数"] < 10:
+            missing.append("一句话结论过短")
+        if "一句话" not in items[-1][1] and "总结" not in items[-1][1]:
+            missing.append("结尾一句话总结")
 
     return {"ok": not missing, "missing": missing, "stats": stats}
 
@@ -220,8 +231,8 @@ def detect(text: str) -> str:
     follow = bool(re.search(r"^#{1,4}\s*追问", text, re.M))
     core = any(any(alias in title for alias in ("定性", "完整解答", "易错点"))
                for _, title in headings(text))
-    if follow and core:
-        return "both"
+    if core:
+        return "solution"  # 讲题稿即使附「追问」附录，仍按更严的七段检查
     return "followup" if follow else "solution"
 
 

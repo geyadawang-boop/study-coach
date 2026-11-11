@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-11-08",
+  "updated": "2026-11-11",
   "note": "能力契约：每项能力的输入、输出、失败态与入口。entry/reference 指向的文件必须存在，由 run_checks.py 的 capabilities 检查强制。",
   "capabilities": [
     {
@@ -9,7 +9,7 @@
       "entry": "scripts/kb_view.py",
       "reference": "references/source-layers.md",
       "inputs": ["用户上传的教材/考纲/真题/教辅", "records/sources.jsonl 四标记录"],
-      "outputs": ["02-资料清单.md", "三类缺口清单"],
+      "outputs": ["02-资料清单.md", "三类缺口清单（按协议人工核对，脚本不自动判定）"],
       "failure_modes": [
         "四标不全 → 拒绝入库，放临时区",
         "资料冲突 → 按范围/权威/应试三层裁决并记 CONF",
@@ -108,7 +108,8 @@
       "failure_modes": [
         "未给 --pages、页码越界或文件缺失 → 退出 2",
         "文本层错位导致解析不出标题 → 退出 1，输出 raw 交由模型重建 toc.json",
-        "无文本层且未装 RapidOCR → 提示依赖并退出 2"
+        "未装 PyMuPDF 或 RapidOCR → 提示依赖并退出 3",
+        "部分目录行缺页码 → 输出 warning，页码偏移检测不可用，tree 仍产出"
       ]
     },
     {
@@ -120,7 +121,8 @@
       "outputs": ["新增/删除/疑似改名章节", "页码偏移", "已退役题清单"],
       "failure_modes": [
         "文件缺失或无标题/目录 → 退出 2",
-        "未装 PyMuPDF 读 PDF → 提示并退出 2",
+        "未装 PyMuPDF 读 PDF → 提示并退出 3",
+        "父章改名 → 先按祖先路径匹配，再按同名标题救回子节；只有真改名才计入 renamed",
         "疑似改名按相似度判定 → 需人工确认后才改教材节引用"
       ]
     },
@@ -150,6 +152,8 @@
         "unit=px 但缺 page_size → 退出 2",
         "cross-page 只给 page_end 或 bbox_end 之一 → 退出 2",
         "区域内无文本且未加 --ocr → 标「待核」并保留裁图，不冒充已识别",
+        "跨页题的中间页 → 按整页裁图拼接，并在输出里提示复核",
+        "两道题映射到同一裁图文件名 → 退出 2，不覆盖已有图片",
         "--suggest 找不到任何题号 → 退出 1，改用 --template 手填",
         "图片没有文本层且未加 --ocr → 退出 2"
       ]
@@ -176,7 +180,7 @@
       "inputs": ["用户原话", "evals/routing.jsonl 路由回归集"],
       "outputs": ["top-3 意图与入口路径", "top1/top3 命中率"],
       "failure_modes": [
-        "没有命中任何意图 → 仍返回 top-3 低分候选，交模型判断",
+        "没有命中任何意图（top1 得分 ≤ 0）→ stderr 报 no match 并退出 1",
         "评测低于 top1 85% 或 top3 95% → run_checks 的 routing_eval FAIL",
         "评测用例的 expect 指向不存在文件 → 直接 FAIL"
       ]
@@ -201,7 +205,7 @@
       "inputs": ["逐步表达式链", "变量与极限点（可选）"],
       "outputs": ["OK / LIMIT / UNKNOWN / FAIL", "首个不等价步骤"],
       "failure_modes": [
-        "未装 sympy → 返回 UNKNOWN，标 [未验]",
+        "未装 sympy → 退出 3，提示安装；LaTeX 解析缺 antlr4 运行时同样退出 3",
         "定义域变化 → 脚本不检查，需人工补",
         "数值反例 → FAIL，回退改步骤"
       ]
@@ -278,7 +282,7 @@
       "inputs": ["records/cards.jsonl", "records/errors.jsonl", "考点关键词"],
       "outputs": ["题目区 + 答案区的 Markdown/HTML", "可打印 HTML（浏览器另存 PDF）"],
       "failure_modes": [
-        "无卡片 → 输出空册并提示先积累卡片",
+        "库为空（无卡片且无错题）→ 退出 1，不生成空册",
         "关键词无命中 → 输出空册，不自动放宽筛选"
       ]
     },
@@ -369,6 +373,8 @@
         "学习库或 01-知识地图.md 缺失 → 退出 2",
         "知识点行解析为空 → 退出 2，不输出空地图",
         "前置成环 → 退出 1 并给出环路径",
+        "同一知识点重复出现 → 合并前置并在 violations 标重复，不漏环",
+        "深依赖链 → 迭代遍历，不触发 RecursionError",
         "--strict 下必掌握超四成 / 分支不在 3–7 / 依赖边超 1.5 倍 → 退出 1"
       ]
     },
@@ -384,7 +390,7 @@
       "failure_modes": [
         "学习库不存在 → 退出 2",
         "定义卡与推导不进表，只收公式+条件/易混/信号/陷阱",
-        "易混对照与陷阱清单都为空 → 退出 1，按速查表 SOP 不能交付",
+        "易混对照与陷阱清单都为空 → 退出 1，不落盘，不留半成品视图",
         "坏行跳过并计数，不静默吞掉"
       ]
     },

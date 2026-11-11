@@ -155,7 +155,7 @@ def main() -> int:
     text = "\n".join(rows) + "\n"
     if not args.dry_run:
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(text, encoding="utf-8")
+        out.write_text(text, encoding="utf-8", newline="\n")
 
     summary = {
         "kb": kb.as_posix(),

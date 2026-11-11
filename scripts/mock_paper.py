@@ -74,8 +74,11 @@ def allocate(points: float, steps: list[str]) -> tuple[list[tuple[str, float]], 
     if not steps:
         return [], "缺 solution_skeleton，无法折算得分点，先补骨架"
     base = round(points / len(steps), 1)
-    items = [(step, base) for step in steps]
     last = round(points - base * (len(steps) - 1), 1)
+    if last < 0:  # 步骤远多于分值：改两位小数，尾项不为负
+        base = round(points / len(steps), 2)
+        last = max(0.0, round(points - base * (len(steps) - 1), 2))
+    items = [(step, base) for step in steps]
     items[-1] = (steps[-1], last)
     return items, None
 

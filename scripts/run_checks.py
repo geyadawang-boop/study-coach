@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import py_compile
 import re
 import shutil
@@ -24,6 +25,7 @@ import tempfile
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # 导入 kb_health 时不要在 skill 树里留 __pycache__
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"  # 子进程同样不留 __pycache__
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import kb_health  # noqa: E402
 
@@ -65,6 +67,7 @@ REQUIRED = [
     "scripts/export_anki.py",
     "scripts/structure_map.py",
     "scripts/cheatsheet.py",
+    "scripts/fitz_compat.py",
     "evals/fixtures/search-brave.html",
     "evals/fixtures/search-yahoo.html",
     "evals/fixtures/search-challenge.html",
@@ -197,7 +200,7 @@ def check_routing_eval(root: Path) -> list[dict]:
     covered = {item["entry"] for item in route.INTENTS}
     for pattern in ("references/*.md", "scripts/*.py"):
         for file in sorted(root.glob(pattern)):
-            if file.name == "run_checks.py":
+            if file.name in {"run_checks.py", "fitz_compat.py"}:
                 continue
             rel = file.relative_to(root).as_posix()
             if rel not in covered:
@@ -298,6 +301,15 @@ def check_index_roundtrip(root: Path) -> list[dict]:
             out.append(finding(
                 "error",
                 f"按 kind 过滤失败：{kind_search.stdout.strip() or kind_search.stderr.strip()}",
+            ))
+        wrong_kind = subprocess.run(
+            [sys.executable, str(script), "search", str(db), "洛必达", "--top", "3", "--kind", "例题"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if wrong_kind.returncode != 1 or "LEC-001" in wrong_kind.stdout:
+            out.append(finding(
+                "error",
+                f"kind 过滤未生效（定理块出现在例题结果里）：{wrong_kind.stdout.strip()}",
             ))
         for kind, query in (
             ("定理", "洛必达"),
@@ -495,6 +507,24 @@ def check_web_search(root: Path) -> list[dict]:
                 out.append(finding("error", "Yahoo 结果未解出真实 URL"))
             if not any("bilibili.com" in u for u in urls):
                 out.append(finding("error", "Yahoo 结果缺 bilibili.com"))
+        if label == "域名过滤":
+            urls = [r.get("url", "") for r in data.get("results") or []]
+            if not urls or any("bilibili.com" not in u for u in urls):
+                out.append(finding("error", f"域名过滤混入站外结果：{urls}"))
+
+    # 正常结果正文出现 captcha 字样不应整次判 blocked
+    noisy = Path(tempfile.mkdtemp()) / "brave-noisy.html"
+    noisy.write_text(
+        brave.read_text(encoding="utf-8", errors="replace").replace(
+            "Asymptotic expansions for trigonometric limits",
+            "Bypassing captcha walls: asymptotic expansions",
+        ),
+        encoding="utf-8",
+    )
+    code, data, err = run(["q", "--engine", "brave", "--fixture-brave", str(noisy),
+                           "--max-results", "3"])
+    if data is None or code != 0 or len(data.get("results") or []) != 3:
+        out.append(finding("error", f"结果正文含 captcha 时被误判 blocked：code={code} {err}"))
 
     code, data, err = run(["q", "--engine", "brave", "--fixture-brave", str(challenge)])
     if data is None:
@@ -626,8 +656,8 @@ def check_session_digest(root: Path) -> list[dict]:
         if code != 0:
             out.append(finding("error", f"摘要返回 {code}"))
         digest = data.get("digest") or ""
-        if len(digest) > int(data.get("chars") or 0):
-            out.append(finding("error", "digest 长度与 chars 不一致"))
+        if int(data.get("chars") or 0) != len(digest):
+            out.append(finding("error", f"chars={data.get('chars')} 与实际 {len(digest)} 字不一致"))
         if int(data.get("chars") or 0) > 2000:
             out.append(finding("error", f"默认摘要 {data.get('chars')} 字，超过 2000"))
         for needle in ("进度指针", "复习", "未闭环错题"):
@@ -645,6 +675,8 @@ def check_session_digest(root: Path) -> list[dict]:
         else:
             if int(data.get("chars") or 0) > 300:
                 out.append(finding("error", f"截断后 {data.get('chars')} 字，超过 300"))
+            if int(data.get("chars") or 0) != len(data.get("digest") or ""):
+                out.append(finding("error", "截断模式 chars 与 digest 长度不一致"))
             if not data.get("truncated"):
                 out.append(finding("error", "超限时没有标 truncated"))
             if "已截断" not in (data.get("digest") or ""):
@@ -796,10 +828,14 @@ def check_structure_map(root: Path) -> list[dict]:
             data = json.loads(proc.stdout)
         except json.JSONDecodeError:
             return out + [finding("error", f"structure_map 输出不是 JSON：{proc.stderr.strip()[:160]}")]
-        if proc.returncode != 0 or data.get("nodes") != 2:
+        if proc.returncode != 0 or data.get("nodes") != 6:
             out.append(finding("error", f"模板地图解析异常：code={proc.returncode} nodes={data.get('nodes')}"))
-        if data.get("edges") != 1:
-            out.append(finding("error", f"模板地图依赖边应为 1，实际 {data.get('edges')}"))
+        if data.get("edges") != 5:
+            out.append(finding("error", f"模板地图依赖边应为 5，实际 {data.get('edges')}"))
+        if abs(float(data.get("mustRatio") or 0) - 1 / 3) > 0.01:
+            out.append(finding("error", f"模板必掌握占比应约 33%，实际 {data.get('mustRatio')}"))
+        if data.get("violations"):
+            out.append(finding("error", f"模板地图违反自身门槛：{data.get('violations')}"))
         rendered = kb / "views/结构地图.md"
         if not rendered.is_file():
             out.append(finding("error", "没有生成 views/结构地图.md"))
@@ -837,6 +873,56 @@ def check_structure_map(root: Path) -> list[dict]:
             out.append(finding("error", "--strict 下门槛违规没有进 violations"))
         if not data.get("unresolved"):
             out.append(finding("error", "外部前置没有被列进 unresolved"))
+
+        dup = Path(tmp) / "dup"
+        (dup / "views").mkdir(parents=True)
+        (dup / "01-知识地图.md").write_text(
+            "# 知识地图\n\n| 知识点 | 考纲要求 | 前置 | 状态 | 证据 |\n"
+            "| --- | --- | --- | --- | --- |\n"
+            "| A | 掌握 | B | L1 | LEC-001 |\n"
+            "| A | 掌握 | C | L1 | LEC-001 |\n"
+            "| B | 掌握 | A | L1 | LEC-001 |\n"
+            "| C | 掌握 | 无 | L1 | LEC-001 |\n",
+            encoding="utf-8",
+        )
+        proc = subprocess.run(
+            [sys.executable, str(script), "--kb", str(dup), "--strict", "--json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            data = {}
+        if proc.returncode != 1:
+            out.append(finding("error", f"重复行掩盖的环应退出 1，实际 {proc.returncode}"))
+        if not data.get("cycles"):
+            out.append(finding("error", "重复知识点合并后仍漏掉了环"))
+        if data.get("duplicates") != ["A"]:
+            out.append(finding("error", f"重复知识点没有报 duplicates：{data.get('duplicates')}"))
+
+        deep = Path(tmp) / "deep"
+        (deep / "views").mkdir(parents=True)
+        deep_lines = ["# 知识地图", "", "| 知识点 | 考纲要求 | 前置 | 状态 | 证据 |",
+                      "| --- | --- | --- | --- | --- |"]
+        for i in range(1200, 0, -1):
+            pre = "无" if i == 1 else f"N{i - 1}"
+            deep_lines.append(f"| N{i} | 掌握 | {pre} | L1 | E{i} |")
+        (deep / "01-知识地图.md").write_text("\n".join(deep_lines) + "\n", encoding="utf-8")
+        proc = subprocess.run(
+            [sys.executable, str(script), "--kb", str(deep), "--json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if proc.returncode != 0:
+            out.append(finding("error", f"1200 层依赖链应正常退出，实际 {proc.returncode}"))
+        if "RecursionError" in proc.stderr:
+            out.append(finding("error", "深依赖链触发 RecursionError"))
+        else:
+            try:
+                data = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                data = {}
+            if data.get("cycles"):
+                out.append(finding("error", "无环深链被误判成环"))
 
     for rel, needles in (
         ("references/knowledge-base.md", ("structure_map.py", "结构地图")),
@@ -894,6 +980,21 @@ def check_cheatsheet(root: Path) -> list[dict]:
             for needle in ("核心公式与条件", "易混对照", "识别信号", "陷阱清单"):
                 if needle not in text:
                     out.append(finding("error", f"速查表缺区块「{needle}」"))
+            sections: dict[str, str] = {}
+            current = ""
+            for line in text.splitlines():
+                if line.startswith("## "):
+                    current = line[3:].strip()
+                elif current:
+                    sections[current] = sections.get(current, "") + line + "\n"
+            for header, needle in (
+                ("一、核心公式与条件", "根号内为负"),
+                ("二、易混对照", "有理化的时机"),
+                ("三、识别信号", "分子分母含根号"),
+                ("四、陷阱清单", "ERR-0001"),
+            ):
+                if needle not in sections.get(header, ""):
+                    out.append(finding("error", f"速查表「{header}」缺少模板内容「{needle}」"))
             if "定义不该进速查表" in text:
                 out.append(finding("error", "定义卡被收进速查表"))
             page = html_file.read_text(encoding="utf-8")
@@ -928,6 +1029,62 @@ def check_cheatsheet(root: Path) -> list[dict]:
     return out
 
 
+def check_fitz_compat(root: Path) -> list[dict]:
+    """PyMuPDF 统一走兼容层：1.28 的 import fitz 横幅不得污染 JSON stdout。"""
+    out: list[dict] = []
+    helper = root / "scripts/fitz_compat.py"
+    if not helper.is_file():
+        return [finding("error", "缺文件：scripts/fitz_compat.py")]
+    text = helper.read_text(encoding="utf-8", errors="replace")
+    for needle in ("redirect_stdout", "import pymupdf", "import fitz"):
+        if needle not in text:
+            out.append(finding("error", f"fitz_compat.py 缺「{needle}」"))
+
+    direct = re.compile(r"^\s*import (?:fitz|pymupdf)\b")
+    for path in sorted((root / "scripts").glob("*.py")):
+        if path.name == "fitz_compat.py":
+            continue
+        for no, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if direct.match(line):
+                out.append(finding(
+                    "error",
+                    f"{path.name}:{no} 直接 import fitz/pymupdf，应改为 from fitz_compat import fitz",
+                ))
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join([str(root / "scripts"), env.get("PYTHONPATH", "")])
+    probe = "from fitz_compat import fitz; print(fitz.NAME)"
+    with tempfile.TemporaryDirectory() as tmp:
+        fake = Path(tmp)
+        (fake / "pymupdf.py").write_text(
+            'print("PyMuPDF 1.28 deprecation banner")\nNAME = "canonical"\n',
+            encoding="utf-8",
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", probe], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", env=env, cwd=str(fake),
+        )
+        if proc.returncode != 0 or proc.stdout.strip() != "canonical":
+            out.append(finding("error", f"canonical 导入未静默：stdout={proc.stdout.strip()[:120]}"))
+        if "banner" in proc.stdout:
+            out.append(finding("error", "pymupdf 的导入横幅污染了 stdout"))
+
+        (fake / "pymupdf.py").write_text('raise ImportError("no pymupdf")\n', encoding="utf-8")
+        (fake / "fitz.py").write_text(
+            'print("legacy fitz deprecation banner")\nNAME = "legacy"\n',
+            encoding="utf-8",
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", probe], capture_output=True, text=True,
+            encoding="utf-8", errors="replace", env=env, cwd=str(fake),
+        )
+        if proc.returncode != 0 or proc.stdout.strip() != "legacy":
+            out.append(finding("error", f"旧版回退未静默：stdout={proc.stdout.strip()[:120]}"))
+        if "banner" in proc.stdout:
+            out.append(finding("error", "旧版 fitz 的导入横幅污染了 stdout"))
+    return out
+
+
 PRIVACY_RULES = [
     ("私钥", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
     ("OpenAI 风格 key", re.compile(r"\bsk-[A-Za-z0-9_-]{20,}")),
@@ -935,7 +1092,9 @@ PRIVACY_RULES = [
     ("AWS access key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
     ("硬编码密钥", re.compile(
         r"(?i)\b(api[_-]?key|secret|password|access[_-]?token)\b\s*[:=]\s*[\"'][^\"'\s]{8,}[\"']")),
-    ("本机绝对路径", re.compile(r"(?i)\b[A-Z]:[\\/](?:Users|Documents)[\\/]([^\\/\s\"'`]+)")),
+    ("本机绝对路径", re.compile(
+        r"(?i)\b[A-Z]:[\\/](?:Users|Documents(?: and Settings)?|Work|Projects|Desktop)[\\/]([^\\/\s\"'`]+)"
+        r"|(?<![\w.])/(?:home|Users)/([^/\s\"'`]+)")),
     ("邮箱", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
 ]
 PRIVACY_SKIP_DIRS = {".git", ".index", "__pycache__", ".venv", "node_modules", "学习库"}
@@ -963,8 +1122,9 @@ def check_privacy(root: Path) -> list[dict]:
                 for match in pattern.finditer(line):
                     hit = match.group(0)
                     if label == "本机绝对路径":
-                        segment = match.group(1)
-                        if "<" in segment or "%" in segment or segment.lower() in {"you", "user", "username"}:
+                        segment = next((g for g in match.groups() if g), "")
+                        if ("<" in segment or "%" in segment
+                                or segment.lower() in {"you", "user", "username", "name", "alice"}):
                             continue
                     if label == "邮箱":
                         domain = hit.rsplit("@", 1)[-1].lower()
@@ -1138,7 +1298,7 @@ def check_pdf_probe(root: Path) -> list[dict]:
     out: list[dict] = []
     script = root / "scripts/pdf_probe.py"
     try:
-        import fitz  # PyMuPDF
+        from fitz_compat import fitz
     except ImportError:
         return [finding("info", "跳过 pdf_probe：未安装 PyMuPDF")]
 
@@ -1305,7 +1465,7 @@ def check_ocr_page(root: Path) -> list[dict]:
     out: list[dict] = []
     script = root / "scripts/ocr_page.py"
     try:
-        import fitz
+        from fitz_compat import fitz
         import rapidocr_onnxruntime  # noqa: F401
     except ImportError:
         return [finding("info", "跳过 ocr_page：未安装 PyMuPDF 或 RapidOCR")]
@@ -1428,7 +1588,7 @@ def check_chapter_diff(root: Path) -> list[dict]:
 
     with tempfile.TemporaryDirectory() as tmp:
         try:
-            import fitz
+            from fitz_compat import fitz
 
             for name, chapters in (
                 ("old.pdf", [("第1章 极限", 1), ("第2章 导数", 2)]),
@@ -1451,7 +1611,7 @@ def check_chapter_diff(root: Path) -> list[dict]:
             elif "| 第2章 导数与微分 | 2 | 3 | +1 |" not in proc.stdout:
                 out.append(finding("error", "chapter_diff PDF 未给页码偏移 +1"))
         except ImportError:
-            pass
+            out.append(finding("info", "跳过 chapter_diff 的 PDF 目录部分：未安装 PyMuPDF"))
 
         proc = subprocess.run(
             [sys.executable, str(script), str(Path(tmp) / "nope.md"), str(fixtures / "chapters-new.md")],
@@ -1527,9 +1687,9 @@ def check_toc_extract(root: Path) -> list[dict]:
     script = root / "scripts/toc_extract.py"
     with tempfile.TemporaryDirectory() as tmp:
         try:
-            import fitz
+            from fitz_compat import fitz
         except ImportError:
-            return out
+            return [finding("info", "跳过 toc_extract：未安装 PyMuPDF")]
         clean = Path(tmp) / "toc.pdf"
         doc = fitz.open()
         page = doc.new_page()
@@ -1620,9 +1780,9 @@ def check_page_regions(root: Path) -> list[dict]:
     script = root / "scripts/page_regions.py"
     with tempfile.TemporaryDirectory() as tmp:
         try:
-            import fitz
+            from fitz_compat import fitz
         except ImportError:
-            return out
+            return [finding("info", "跳过 page_regions：未安装 PyMuPDF")]
         base = Path(tmp)
         pdf = base / "two.pdf"
         doc = fitz.open()
@@ -1881,6 +2041,8 @@ def check_review_schedule(root: Path) -> list[dict]:
                     out.append(finding("error", f"review_schedule FSRS 评分状态不对：{grade}"))
                 if not grade.get("due_date"):
                     out.append(finding("error", "review_schedule FSRS 未给出下次到期"))
+        else:
+            out.append(finding("info", "跳过 review_schedule 的 FSRS 分支：未安装 fsrs"))
 
         proc = subprocess.run(
             [sys.executable, str(script), "--kb", str(kb), "--at", "2026-11-08",
@@ -2063,6 +2225,7 @@ CHECKS = {
     "routing_eval": lambda root, kb: check_routing_eval(root),
     "evals": lambda root, kb: check_evals(root),
     "compile": lambda root, kb: check_compile(root),
+    "fitz_compat": lambda root, kb: check_fitz_compat(root),
     "index_roundtrip": lambda root, kb: check_index_roundtrip(root),
     "retrieval_eval": lambda root, kb: check_retrieval_eval(root),
     "intake_gate": lambda root, kb: check_intake_gate(root),
@@ -2118,7 +2281,10 @@ def main() -> int:
         if handler is None:
             results.append({"id": cid, "status": "FAIL", "findings": [finding("error", "checks.json 声明的检查没有实现")]})
             continue
-        findings = handler(root, kb)
+        try:
+            findings = handler(root, kb)
+        except Exception as exc:  # 单条检查崩溃不应吞掉其余检查与 JSON 输出
+            findings = [finding("error", f"检查崩溃：{type(exc).__name__}: {exc}")]
         failed = any(f["level"] == "error" for f in findings)
         skipped = any(f["level"] == "info" and "跳过" in f["msg"] for f in findings)
         results.append({

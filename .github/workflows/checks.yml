@@ -1,0 +1,30 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # 核心依赖只用标准库；未装 PyMuPDF/fsrs/sympy 时相关检查显式 SKIP。
+      - name: Acceptance checks
+        run: python scripts/run_checks.py --skill-root .
+
+      - name: Acceptance checks with template KB
+        run: python scripts/run_checks.py --skill-root . --kb 知识库模板
+
+      - name: Routing eval
+        run: python scripts/route.py --eval evals/routing.jsonl --json

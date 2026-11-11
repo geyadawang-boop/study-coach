@@ -32,9 +32,14 @@
       "desc": "scripts/ 下所有 Python 文件可编译"
     },
     {
+      "id": "fitz_compat",
+      "level": "error",
+      "desc": "PyMuPDF 统一经 fitz_compat 导入：1.28 弃用横幅不污染 JSON stdout，旧版回退同样静默，业务脚本禁止直接 import fitz/pymupdf"
+    },
+    {
       "id": "index_roundtrip",
       "level": "error",
-      "desc": "kb_index.py 能在临时目录建 FTS5 索引，检索中文子串，并按定理/步骤/例题/陷阱四类过滤"
+      "desc": "kb_index.py 能自动创建索引父目录、建 FTS5 索引、检索中文子串并按四类过滤；带引号的查询不崩，kind 无命中退出 1"
     },
     {
       "id": "retrieval_eval",
@@ -44,67 +49,67 @@
     {
       "id": "intake_gate",
       "level": "error",
-      "desc": "intake_check.py 对好/坏/缺字段 fixture 的判定与预期一致（schema、页码、字段类型、题型分布、题数与总分）"
+      "desc": "intake_check.py 对好/坏/缺字段 fixture 的判定与预期一致（schema、页码、字段类型、题型分布、题数与总分）；非 UTF-8 文件报错退出 2 而不是抛栈"
     },
     {
       "id": "pdf_probe",
       "level": "error",
-      "desc": "pdf_probe.py 对文本层 PDF 判 A、空白/扫描 PDF 判 B，缺文件与非 PDF 退出 2（未装 PyMuPDF 时跳过）"
+      "desc": "pdf_probe.py 对文本层 PDF 判 A、空白/扫描 PDF 判 B，乱码判定覆盖替换符/豆腐块/私用区/Latin-1 噪声，缺文件与非 PDF 退出 2（未装 PyMuPDF 时跳过）"
     },
     {
       "id": "ocr_page",
       "level": "error",
-      "desc": "ocr_page.py 能 OCR 渲染页（文本层 PDF 转图）、页码越界与非 PDF 退出 2；缺依赖时跳过"
+      "desc": "ocr_page.py 能 OCR 渲染页（文本层 PDF 转图）、页码越界与非 PDF 退出 2、OCR 异常退出 2 且临时渲染图会被清理；缺依赖时跳过"
     },
     {
       "id": "paper_report",
       "level": "error",
-      "desc": "paper_report.py 生成题型/考点/难度/陷阱/母题五节，待核题单列且不入统计，考点合计不符退出 1"
+      "desc": "paper_report.py 生成题型/考点/难度/陷阱/母题五节，待核题单列且不入统计，考点合计不符退出 1，单元格里的竖线与换行不破坏表格"
     },
     {
       "id": "weekly_report",
       "level": "error",
-      "desc": "weekly_report.py 按窗口汇总事件/退出票/复习/错题/困惑，空库给自检提示，缺库退出 2"
+      "desc": "weekly_report.py 只统计窗口内的复习与事件，推迟到窗口外的卡不误算到期，空复习周仍列出到期卡，缺库退出 2"
     },
     {
       "id": "slice_questions",
       "level": "error",
-      "desc": "slice_questions.py 从文本/OCR JSON 切出题目草稿，小数不误切，低置信标待核，小题号入 sub"
+      "desc": "slice_questions.py 从文本/OCR JSON 切出题目草稿，小数不误切，分值缺失按 0.0 保留而不是丢弃，低置信标待核，小题号入 sub"
     },
     {
       "id": "chapter_diff",
       "level": "error",
-      "desc": "chapter_diff.py 对比 Markdown/PDF/toc.json 章节树，报新增/删除/改名/页码偏移，并标记已退役题"
+      "desc": "chapter_diff.py 按祖先路径对比章节树，同名「本章小结」不互相覆盖，父章改名不误伤子节，报新增/删除/改名/页码偏移并标记已退役题"
     },
     {
       "id": "toc_extract",
       "level": "error",
-      "desc": "toc_extract.py 从目录页文本层或 OCR 抽章节树，输出 raw 供模型校对，错位目录退出 1 并提示重建"
+      "desc": "toc_extract.py 从目录页文本层或 OCR 抽章节树，右对齐页码与标题按行框合并，缺页码给 warning，错位目录退出 1 并提示重建，缺依赖退出 3"
     },
     {
       "id": "mock_paper",
       "level": "error",
-      "desc": "mock_paper.py 按原卷结构生成组卷蓝图与逐步 rubric，待核题剔除，缺分值退出 1"
+      "desc": "mock_paper.py 按原卷结构生成组卷蓝图与逐步 rubric，待核题剔除，缺分值退出 1，分值分配不出现负值"
     },
     {
       "id": "page_regions",
       "level": "error",
-      "desc": "page_regions.py 校验模型给的 regions.json，按栏/跨页裁图并逐区取文本，越界与重复题号退出 2"
+      "desc": "page_regions.py 校验 regions.json（越界/px 缺 page_size/跨页字段不全/裁图文件名冲突均退出 2），按栏与跨页裁图，跨页中间页按整页拼接并提示复核，图片先按 EXIF 摆正"
     },
     {
       "id": "review_schedule",
       "level": "error",
-      "desc": "review_schedule.py 回放 reviews.jsonl 历史，FSRS/四档阶梯给出下次间隔与到期日，--record 追加 REV 记录"
+      "desc": "review_schedule.py 按 (ts,id) 顺序回放 reviews.jsonl，FSRS/四档阶梯给出间隔与到期日，零复习卡同样列出，--record 追加 REV 记录"
     },
     {
       "id": "step_check",
       "level": "error",
-      "desc": "step_check.py 能验证等价链：正确链通过，错误链判 FAIL"
+      "desc": "step_check.py 能验证等价链：正确链通过，错误链判 FAIL，单步输入必须配 --expect 否则拒绝空跑"
     },
     {
       "id": "explain_lint",
       "level": "error",
-      "desc": "explain_lint.py 校验讲题稿七段、追问稿三层与多解稿：好样例 PASS，缺易错点/视角/来源退出 1"
+      "desc": "explain_lint.py 校验讲题稿七段、追问稿三层与多解稿：好样例 PASS，缺易错点/视角/来源/过短结论退出 1，只有核心段时判讲题稿而不是含糊的 both"
     },
     {
       "id": "solution_research",
@@ -114,37 +119,37 @@
     {
       "id": "web_search",
       "level": "error",
-      "desc": "web_search.py 解析 Brave/Yahoo 结果、解出真实 URL、域名过滤与字符预算生效、反爬退出 2、全程不声明使用 key"
+      "desc": "web_search.py 解析 Brave/Yahoo 结果、解出真实 URL、域名过滤与字符预算生效；只有无结果时才判反爬，正文出现 captcha 字样的正常页不误判；全程不声明使用 key"
     },
     {
       "id": "obsidian_cards",
       "level": "error",
-      "desc": "export_cards.py 每卡一文件导出到 notes/cards、多行 ? 卡与 #review 齐全、重跑幂等、标题变化不改名、孤儿卡片只报不删"
+      "desc": "export_cards.py 每卡一文件导出到 notes/cards、多行 ? 卡与 #review 齐全、重跑幂等、标题变化不改名、孤儿卡片只报不删，标题以 - 开头或为纯数字时 YAML 自动加引号"
     },
     {
       "id": "session_digest",
       "level": "error",
-      "desc": "session_digest.py 摘要受字符上限约束、超限截断、只读 progress.md 与 records 不读 notes，缺学习库退出 2"
+      "desc": "session_digest.py 摘要受字符上限约束、截断后按实际字符数复核、只读 progress.md 与 records 不读 notes，缺学习库退出 2"
     },
     {
       "id": "anki_export",
       "level": "error",
-      "desc": "export_anki.py 生成 Anki 2.1.54+ 文件头、GUID 稳定去重、HTML 转义、retired 默认跳过、重跑幂等"
+      "desc": "export_anki.py 生成 Anki 2.1.54+ 文件头、GUID 稳定去重、HTML 转义、retired 默认跳过、重跑幂等，文件固定 LF 行尾"
     },
     {
       "id": "structure_map",
       "level": "error",
-      "desc": "structure_map.py 按三档优先级分组出 mermaid 地图、依赖边受控、未知区域不丢、成环与 --strict 门槛退出 1"
+      "desc": "structure_map.py 按三档优先级分组出 mermaid 地图、依赖边受控、未知区域不丢、重复行合并不漏环、深链不递归溢出、「不要求掌握」判了解、0/0 这类术语斜杠不切分，成环与 --strict 门槛退出 1"
     },
     {
       "id": "cheatsheet",
       "level": "error",
-      "desc": "cheatsheet.py 四区齐全、定义卡不入表、A4 打印样式、缺易混对照与陷阱时退出 1"
+      "desc": "cheatsheet.py 四区齐全且内容落到正确分区、表头列义为「公式/失效边界/做法」、定义卡不入表、A4 打印样式，缺易混对照与陷阱时退出 1 且不落盘"
     },
     {
       "id": "privacy",
       "level": "error",
-      "desc": "公开仓库前扫描：无私钥/API key/token、无本机绝对路径、无个人邮箱（noreply/example 例外）"
+      "desc": "公开仓库前扫描：无私钥/API key/token、无本机绝对路径（Windows 用户目录与 POSIX /home、/Users 均覆盖）、无个人邮箱（noreply/example 例外）"
     },
     {
       "id": "render_rules",
@@ -154,12 +159,12 @@
     {
       "id": "export_and_backlinks",
       "level": "error",
-      "desc": "kb_view.py 生成双链反查、手改视图时告警；export_book.py 导出 md/html、--errors-only 与 --max 行为正确"
+      "desc": "kb_view.py 生成双链反查、手改视图时告警、坏 count 不中断五份视图；export_book.py 导出 md/html、--errors-only 与 --max 行为正确，坏行告警且空库退出 1 不落盘"
     },
     {
       "id": "confusion_stats",
       "level": "error",
-      "desc": "kb_stats.py 聚合 confusions.jsonl、坏行跳过计数、输出目录自动创建"
+      "desc": "kb_stats.py 聚合 confusions.jsonl、坏行计数只走 stderr、输出目录自动创建，视图里的数据源指针按输出目录写成相对路径"
     },
     {
       "id": "capabilities",
