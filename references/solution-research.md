@@ -27,13 +27,15 @@ python scripts/web_search.py "tanx-sinx/x^3 一题多解" \
   --max-results 5 --min-results 2 --timeout 60 --max-chars 2800
 ```
 
-- 顺序固定 Brave → Yahoo；`status=ok` 即停，同一请求不重复发。
+- 顺序固定 Brave → Yahoo → Bing；`status=ok` 即停，同一请求不重复发。
+- Bing 是服务端渲染页（`li.b_algo` + `p.b_lineclamp`），专门补 Brave 前端懒加载拿不到摘要的情况；`/ck/a?...&u=a1...` 跳转会解回真实地址，解不出就保留原链接。
+- 每轮结果先过相关性门：标题+摘要与查询词（英文按词、中文按 bigram，忽略空格与符号）重合不到 1/3 的整条丢弃，`relevanceDropped` 记录条数；全被丢掉按 `no-relevant-results` 继续下一引擎。反爬降级页常返回「带摘要但整页跑题」的结果，这一关避免把噪音当 `ok`。
 - `status=degraded`：有结果但弱（少于 `--min-results`、title/snippet 全空，或 `filterRelaxed=true`），可引用但要标注「结果偏少 / 未按域名过滤」。
 - 域名白名单把结果全滤空时不再直接报错：保留原结果、降为 `degraded` 并置 `filterRelaxed=true`，由调用方决定是否采用。
-- `--fallback-query`：首个查询无结果、或只拿到 `filterRelaxed` 结果时补发一次（典型是中文题干配英文关键词打 StackExchange）；`queriesTried` 与 `fallbackUsed` 写进 JSON。
-- `status=error`：读 `firstFailureReason`，`challenge-detected` / `timeout` / `no-results` / `budget-exhausted` 原样写进降级说明。
-- 输出 JSON：`results[].title/url/snippet`、`providerAttempts`、`filterRelaxed`、`apiKeyUsed=false`、`resultChars`。
-- 只发 GET，不登录、不带 key、不落盘；离线自测用 `--fixture-brave` / `--fixture-yahoo`。
+- `--fallback-query`：首个查询无结果、或只拿到弱结果（含 `filterRelaxed`、摘要全空）时补发一次（典型是中文题干配英文关键词打 StackExchange）；`queriesTried` 与 `fallbackUsed` 写进 JSON。
+- `status=error`：读 `firstFailureReason`，`challenge-detected` / `timeout` / `no-results` / `no-relevant-results` / `budget-exhausted` 原样写进降级说明。
+- 输出 JSON：`results[].title/url/snippet`、`providerAttempts`（含 `snippetCount` / `relevanceDropped`）、`filterRelaxed`、`apiKeyUsed=false`、`resultChars`。
+- 只发 GET，不登录、不带 key、不落盘；离线自测用 `--fixture-brave` / `--fixture-yahoo` / `--fixture-bing`。
 - 传输优先 `curl.exe`（Yahoo 对 urllib 的指纹常回 500），没有 curl 时退回 urllib 并重试一次。
 
 外部检索统一走这个脚本，用 `--include-domains` 把范围锁在 B 站、StackExchange、arXiv，避免搜到不可控页面。

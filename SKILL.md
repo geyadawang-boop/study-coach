@@ -95,7 +95,7 @@ description: "通用备考与学习教练，适用于任何有教材和考试的
 - **能验算就验算**：计算结果先用 `scripts/step_check.py` 或 SymPy 验；未验的结论标 `[未验]`，不判"正确"。
 - **讲题不留空段**：讲题稿七段、追问稿三层；写完跑 `scripts/explain_lint.py`，缺段不算成稿。追问不重复首讲，必须给数值或特殊值验证。
 - **多解必须验算**：并列多解时，常规解法排第一且必须完整；每种替代解法都要过 `step_check.py` 或特殊值验算，并写清适用与失效条件。来源给 URL + 访问日期；没联网就说「未外部检索」，不把模型记忆说成外部资料。
-- **检索先跑脚本**：要外部解法时先跑 `scripts/web_search.py`（Brave → Yahoo，零 API Key），读 `status` 与 `providerAttempts`；只有 `status=ok` 才算检索成功，`degraded` 只能当线索并标注「结果偏少 / 未按域名过滤」，`error`（`challenge-detected` / `timeout` / `no-results`）一律按「未外部检索」降级，并写清失败原因。检索顺序是本地库 → 教材/真题 → B 站 → StackExchange → arXiv；StackExchange 必须先用英文关键词（中文题干用 `--fallback-query` 补英文），只用于验算与反例，不作考纲依据。
+- **检索先跑脚本**：要外部解法时先跑 `scripts/web_search.py`（Brave → Yahoo → Bing，零 API Key，结果先过查询词相关性门），读 `status` 与 `providerAttempts`；只有 `status=ok` 才算检索成功，`degraded` 只能当线索并标注「结果偏少 / 未按域名过滤」，`error`（`challenge-detected` / `timeout` / `no-results` / `no-relevant-results`）一律按「未外部检索」降级，并写清失败原因。检索顺序是本地库 → 教材/真题 → B 站 → StackExchange → arXiv；StackExchange 必须先用英文关键词（中文题干用 `--fallback-query` 补英文），只用于验算与反例，不作考纲依据。
 - **开场先浓缩**：新会话先跑 `scripts/session_digest.py`（默认 ≤ 2000 字，只读 `progress.md` 与 `records/*.jsonl`，不读 `notes/`），再按摘要里的指针取单篇；不整库读入，也不靠上下文记忆状态。上下文只能抑制、不能回收，关键状态必须每讲落到 `progress.md`。
 - **对话公式用 Unicode**：聊天窗按 CommonMark 渲染，不解析 `$...$` 与 `$$...$$`。对话里用 π、≤、→、x²，分数写 `a/b`，分段/多行放 `text` 代码块；`notes/*.md` 才用 LaTeX，两套不混写。
 - **引用可回指**：引用必须落到 `DOC#页码` 或 URL；指不到就删，不引用没打开过的资料。
@@ -127,7 +127,7 @@ description: "通用备考与学习教练，适用于任何有教材和考试的
 | 新会话开场摘要：只看指针与记录，≤ 2000 字，不读整篇笔记 | `scripts/session_digest.py` |
 | 讲题稿/追问稿写完后的结构与深度检查（七段 / 三层） | `scripts/explain_lint.py` |
 | 用户要更优解/一题多解，或题目有多种主流方法：检索 B 站、StackExchange、arXiv 并做多解对比 | `references/solution-research.md` |
-| 需要真联网检索 B 站/学术站点（Brave → Yahoo，零 key、带预算与反爬识别） | `scripts/web_search.py` |
+| 需要真联网检索 B 站/学术站点（Brave → Yahoo → Bing，零 key、带预算、相关性门与反爬识别） | `scripts/web_search.py` |
 | 入口不确定：把用户原话映射到 top-3 文档/脚本，并跑路由回归 | `scripts/route.py` |
 | 整卷报告（题型/考点/难度/陷阱/母题） | `scripts/paper_report.py` |
 | 模拟卷组卷蓝图与逐步 rubric | `scripts/mock_paper.py` |

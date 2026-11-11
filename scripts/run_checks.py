@@ -70,6 +70,8 @@ REQUIRED = [
     "scripts/fitz_compat.py",
     "evals/fixtures/search-brave.html",
     "evals/fixtures/search-yahoo.html",
+    "evals/fixtures/search-bing.html",
+    "evals/fixtures/search-spam.html",
     "evals/fixtures/search-challenge.html",
     "scripts/run_checks.py",
     "subjects/calculus/syllabus.md",
@@ -463,6 +465,8 @@ def check_web_search(root: Path) -> list[dict]:
     script = root / "scripts/web_search.py"
     brave = root / "evals/fixtures/search-brave.html"
     yahoo = root / "evals/fixtures/search-yahoo.html"
+    bing = root / "evals/fixtures/search-bing.html"
+    spam = root / "evals/fixtures/search-spam.html"
     challenge = root / "evals/fixtures/search-challenge.html"
 
     def run(extra: list[str]) -> tuple[int, dict | None, str]:
@@ -480,6 +484,8 @@ def check_web_search(root: Path) -> list[dict]:
                        "--max-results", "3"], 0, "brave-html", 3),
         ("Yahoo 解析", ["q", "--engine", "yahoo", "--fixture-yahoo", str(yahoo),
                         "--max-results", "3"], 0, "yahoo-html", 2),
+        ("Bing 解析", ["tanx sinx limit", "--engine", "bing", "--fixture-bing", str(bing),
+                      "--max-results", "3"], 0, "bing-html", 2),
         ("域名过滤", ["q", "--engine", "brave", "--fixture-brave", str(brave),
                       "--include-domains", "bilibili.com"], 0, "brave-html", 1),
         ("域名全滤空降级", ["q", "--engine", "brave", "--fixture-brave", str(brave),
@@ -509,9 +515,15 @@ def check_web_search(root: Path) -> list[dict]:
                 out.append(finding("error", "Yahoo 结果未解出真实 URL"))
             if not any("bilibili.com" in u for u in urls):
                 out.append(finding("error", "Yahoo 结果缺 bilibili.com"))
-        if label in ("Brave 解析", "Yahoo 解析"):
+        if label in ("Brave 解析", "Yahoo 解析", "Bing 解析"):
             if not any((r.get("snippet") or "").strip() for r in data.get("results") or []):
                 out.append(finding("error", f"{label} 结果摘要全空"))
+        if label == "Bing 解析":
+            urls = [r.get("url", "") for r in data.get("results") or []]
+            if any("bing.com/ck/a" in u for u in urls):
+                out.append(finding("error", f"Bing 跳转链接未解码：{urls}"))
+            if not any("zhihu.com" in u for u in urls):
+                out.append(finding("error", f"Bing 跳转未还原成真实站点：{urls}"))
         if label == "域名过滤":
             urls = [r.get("url", "") for r in data.get("results") or []]
             if not urls or any("bilibili.com" not in u for u in urls):
@@ -525,6 +537,19 @@ def check_web_search(root: Path) -> list[dict]:
                 ))
             if (data.get("qualityGate") or {}).get("weak") is not True:
                 out.append(finding("error", "域名全滤空未在质量门标 weak"))
+
+    # 反爬降级页会给「带摘要但整页跑题」的结果：相关性门必须拦下，不能当成 ok
+    code, data, err = run(["tanx sinx limit", "--engine", "bing", "--fixture-bing", str(spam),
+                           "--max-results", "3"])
+    if data is None:
+        out.append(finding("error", f"无关结果样例输出不是 JSON：{err}"))
+    elif code != 2 or data.get("firstFailureReason") != "no-relevant-results":
+        out.append(finding(
+            "error",
+            f"无关结果未被拦下：code={code} reason={data.get('firstFailureReason')}",
+        ))
+    elif data.get("results"):
+        out.append(finding("error", "无关结果仍被当作可用结果返回"))
 
     # 正常结果正文出现 captcha 字样不应整次判 blocked
     noisy = Path(tempfile.mkdtemp()) / "brave-noisy.html"
@@ -549,12 +574,13 @@ def check_web_search(root: Path) -> list[dict]:
             f"反爬样例未按 challenge-detected 退出 2：code={code} reason={data.get('firstFailureReason')}",
         ))
 
-    # 备选查询只在主查询无结果时才发：两个查询各跑 Brave/Yahoo，应留 4 条尝试
+    # 备选查询只在主查询无结果时才发：两个查询各跑 Brave/Yahoo/Bing，应留 6 条尝试
     code, data, err = run(["q", "--engine", "auto", "--fixture-brave", str(challenge),
-                           "--fixture-yahoo", str(challenge), "--fallback-query", "q2"])
+                           "--fixture-yahoo", str(challenge), "--fixture-bing", str(challenge),
+                           "--fallback-query", "q2"])
     if data is None:
         out.append(finding("error", f"备选查询样例输出不是 JSON：{err}"))
-    elif data.get("queriesTried") != ["q", "q2"] or len(data.get("providerAttempts") or []) != 4:
+    elif data.get("queriesTried") != ["q", "q2"] or len(data.get("providerAttempts") or []) != 6:
         out.append(finding(
             "error",
             f"备选查询未按预期回退：queriesTried={data.get('queriesTried')} "

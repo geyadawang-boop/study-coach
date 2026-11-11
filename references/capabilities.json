@@ -339,12 +339,14 @@
                  "总预算 --timeout、字符预算 --max-chars", "离线自测 HTML fixture"],
       "outputs": ["结果 JSON：title/url/snippet", "providerAttempts 与 firstFailureReason",
                   "status=ok|degraded|error", "queriesTried / fallbackUsed / filterRelaxed",
-                  "apiKeyUsed=false"],
+                  "snippetCount / relevanceDropped", "apiKeyUsed=false"],
       "failure_modes": [
-        "Brave/Yahoo 返回 403/429 → upstream-http-blocked，继续下一引擎",
+        "Brave/Yahoo/Bing 返回 403/429 → upstream-http-blocked，继续下一引擎",
         "命中验证码/异常流量 → challenge-detected，退出 2，不硬解析",
+        "Bing /ck/a 跳转解不出真实地址 → 保留原链接，不伪造",
+        "结果与查询词几乎不重合（反爬降级页） → no-relevant-results，丢弃并继续下一引擎",
         "域名过滤后为空 → 保留原结果并降为 degraded（filterRelaxed=true），不直接判失败",
-        "没有结果 → no-results；主查询为空且给了 --fallback-query 时再发一次",
+        "没有结果 → no-results；主查询为空或只剩弱结果且给了 --fallback-query 时再发一次",
         "超出字符预算 → budget-exhausted 或计入 budgetOmittedResults",
         "总预算耗尽 → timeout，不重试同一请求"
       ]

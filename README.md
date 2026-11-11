@@ -106,7 +106,7 @@ python scripts/web_search.py "tanx-sinx/x^3 一题多解" \
   --max-results 5 --min-results 2 --timeout 60 --max-chars 2800
 ```
 
-Brave → Yahoo 顺序回退，`status=ok` 即停；结果带标题与正文摘要，字符预算、域名白名单、反爬识别（`challenge-detected`）与失败原因都写进 JSON。中文查询常拿不到 StackExchange 结果，`--fallback-query` 会在首个查询无结果、或白名单被全部滤空时补一次英文查询。只有 `ok` 才允许把结果当外部来源；`degraded`（结果偏少、摘要全空、`filterRelaxed=true`）可引用但必须标注「未按域名过滤 / 结果偏少」，`error` 一律降级为「未外部检索」。
+Brave → Yahoo → Bing 顺序回退，`status=ok` 即停；结果带标题与正文摘要，字符预算、域名白名单、反爬识别（`challenge-detected`）与失败原因都写进 JSON。Bing 是服务端渲染页，解析 `li.b_algo` 并把 `/ck/a?...&u=a1...` 跳转解回真实地址，用来补 Brave 前端懒加载拿不到摘要的情况。中文查询常拿不到 StackExchange 结果，`--fallback-query` 会在首个查询无结果、结果弱（少于 `--min-results`、摘要全空、白名单被全部滤空）时补一次英文查询。相关性门按查询词与标题/摘要的重合度过滤，反爬降级页那种「带摘要但整页跑题」的结果会被丢掉，不会误报 `ok`。只有 `ok` 才允许把结果当外部来源；`degraded`（结果偏少、摘要全空、`filterRelaxed=true`）可引用但必须标注「未按域名过滤 / 结果偏少」，`error` 一律降级为「未外部检索」。
 
 ### 4. 批改、记忆与复习
 
@@ -162,9 +162,9 @@ pip install sympy           # 步骤等价与特殊值验算
 仓库带 `package.json` 与零依赖安装器，只做本地 / Release 分发，不发布 npm registry：
 
 ```bash
-npm pack                                    # 产出 study-coach-5.3.0.tgz
-npx ./study-coach-5.3.0.tgz install --dest ~/.trae-cn/skills/study-coach
-npx ./study-coach-5.3.0.tgz doctor --dest ~/.trae-cn/skills/study-coach
+npm pack                                    # 产出 study-coach-5.4.0.tgz
+npx ./study-coach-5.4.0.tgz install --dest ~/.trae-cn/skills/study-coach
+npx ./study-coach-5.4.0.tgz doctor --dest ~/.trae-cn/skills/study-coach
 ```
 
 `install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 35 项验收，所以 Python 3.11+（推荐 3.12 / 3.13）是硬要求，低于 3.11 会直接给出提示并以 2 退出，npm 只负责搬文件。
@@ -234,7 +234,7 @@ study-coach/
 ├── scripts/                 # 27 个可执行脚本
 ├── subjects/calculus/       # 学科插件：考纲、渲染、题型、误解库、术语
 ├── 知识库模板/              # 可直接复制的学习库骨架，含示例讲义与记录
-├── evals/                   # 27 条行为用例、29 条检索、54 条路由、17 个 fixture
+├── evals/                   # 27 条行为用例、29 条检索、54 条路由、19 个 fixture
 ├── npm/bin/study-coach.js   # 零依赖安装器：install / doctor
 └── agents/openai.yaml       # Agent 接口描述
 ```

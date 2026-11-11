@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
-"""零 API Key 网页检索：Brave HTML → Yahoo HTML，带预算、域名过滤与质量门。
+"""零 API Key 网页检索：Brave HTML → Yahoo HTML → Bing HTML，带预算、域名过滤与质量门。
 
-只发 GET，解析结果页 HTML；不登录、不带 key、不落盘。每个查询只发一次请求，
-主查询无结果或只剩放宽结果时才会补发一次 --fallback-query。
-离线自测用 --fixture-brave / --fixture-yahoo 注入本地 HTML。
+只发 GET，解析结果页 HTML；不登录、不带 key、不落盘。每个查询每个引擎只发一次请求，
+主查询无结果或只剩弱结果时才会补发一次 --fallback-query。
+每轮结果先过相关性门：标题+摘要与查询词几乎不重合的整条丢弃（反爬降级页常整页跑题），
+全被丢掉按 no-relevant-results 继续下一引擎，避免把噪音当 ok。
+离线自测用 --fixture-brave / --fixture-yahoo / --fixture-bing 注入本地 HTML。
 
 用法:
   python scripts/web_search.py "tanx-sinx/x^3 一题多解" \
       --include-domains bilibili.com,math.stackexchange.com
   python scripts/web_search.py "tanx-sinx/x^3 一题多解" \
-      --fallback-query "limit (tan x - sin x)/x^3"   # 首个查询没结果才用
-  python scripts/web_search.py "..." --engine brave \
-      --fixture-brave evals/fixtures/search-brave.html
+      --fallback-query "limit (tan x - sin x)/x^3"   # 首个查询没结果或只剩弱结果才用
+  python scripts/web_search.py "..." --engine bing \
+      --fixture-bing evals/fixtures/search-bing.html
 
 退出码:
   0  结果通过质量门
   1  degraded：有结果但弱（少于 min-results、title/snippet 全空，或域名白名单全滤空后放宽）
-  2  无结果、被反爬拦截、超时或参数错误
+  2  无结果、结果全部跑题、被反爬拦截、超时或参数错误
 
 输出: JSON，字段与 references/solution-research.md 的检索契约一致。
 """
@@ -24,6 +26,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import html as html_lib
 import json
 import re
@@ -39,6 +43,7 @@ from pathlib import Path
 
 BRAVE_URL = "https://search.brave.com/search?q={}"
 YAHOO_URL = "https://search.yahoo.com/search?p={}"
+BING_URL = "https://www.bing.com/search?q={}&setlang=zh-Hans"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36")
 ACCEPT = ("text/html,application/xhtml+xml,application/xml;q=0.9,"
@@ -48,7 +53,8 @@ CURL = shutil.which("curl")
 CHALLENGE = re.compile(
     r"(captcha|unusual\s+traffic|verify\s+you\s+are\s+a?\s*human|"
     r"challenge-platform|cf-chl-|access\s+denied)", re.I)
-PROVIDERS = {"brave": "brave-html", "yahoo": "yahoo-html"}
+PROVIDERS = {"brave": "brave-html", "yahoo": "yahoo-html", "bing": "bing-html"}
+URLS = {"brave": BRAVE_URL, "yahoo": YAHOO_URL, "bing": BING_URL}
 
 
 def now_ms() -> int:
@@ -166,6 +172,74 @@ def parse_yahoo(page: str) -> list[dict]:
     return results
 
 
+def decode_bing_url(url: str) -> str:
+    """Bing 常把结果包成 /ck/a?...&u=a1<base64url>，解出真实地址；解不出就原样返回。
+
+    HTML 里 href 的 & 会被转义成 &amp;，不先还原就取不到 u 参数。
+    """
+    url = html_lib.unescape(url)
+    try:
+        raw = (urllib.parse.parse_qs(urllib.parse.urlsplit(url).query).get("u") or [""])[0]
+    except ValueError:
+        return url
+    if not raw.startswith("a1"):
+        return url
+    payload = raw[2:]
+    try:
+        decoded = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+    except (ValueError, binascii.Error):
+        return url
+    text = decoded.decode("utf-8", errors="replace")
+    return text if text.startswith(("http://", "https://")) else url
+
+
+def parse_bing(page: str) -> list[dict]:
+    """Bing 是服务端渲染：li.b_algo 里 h2>a 给标题与链接，p.b_lineclamp 给摘要。
+
+    比 Brave 的 JS 版式稳定，作为「摘要拿不到」时的兜底引擎。
+    """
+    results: list[dict] = []
+    seen: set[str] = set()
+    blocks = re.findall(
+        r"<li\b[^>]*class\s*=\s*[\"'][^\"']*\bb_algo\b[^\"']*[\"'][^>]*>(.*?)</li>",
+        page, re.S | re.I)
+    for block in blocks:
+        heading = re.search(r"<h2\b[^>]*>\s*<a\b(?P<attrs>[^>]*)>(?P<body>.*?)</a>",
+                            block, re.S | re.I)
+        if not heading:
+            continue
+        href = re.search(r"href\s*=\s*[\"']([^\"']+)[\"']", heading.group("attrs"), re.I)
+        if not href:
+            continue
+        url = decode_bing_url(href.group(1))
+        if url.startswith("/"):
+            url = "https://www.bing.com" + url
+        else:
+            url = absolute(url)
+        if not url.startswith(("http://", "https://")) or url.lower() in seen:
+            continue
+        title = clip(clean(heading.group("body")))[:200]
+        snippet = ""
+        clamp = re.search(
+            r"<p\b[^>]*class\s*=\s*[\"'][^\"']*b_lineclamp[^\"']*[\"'][^>]*>(.*?)</p>",
+            block, re.S | re.I)
+        if clamp:
+            snippet = clip(clean(clamp.group(1)))
+        if not snippet:
+            caption = re.search(
+                r"<div\b[^>]*class\s*=\s*[\"'][^\"']*b_caption[^\"']*[\"'][^>]*>(.*?)</div>",
+                block, re.S | re.I)
+            if caption:
+                snippet = clip(clean(caption.group(1)))
+        if title:
+            seen.add(url.lower())
+            results.append({"title": clip(title), "url": url, "snippet": snippet})
+    return results
+
+
+PARSERS = {"brave": parse_brave, "yahoo": parse_yahoo, "bing": parse_bing}
+
+
 def fetch_curl(url: str, timeout: float) -> tuple[str, str]:
     """curl.exe 传输：Yahoo 对 urllib 的 TLS/HTTP2 指纹常回 500，curl 稳定。"""
     command = [CURL, "-sS", "-L", "--compressed", "--max-time", f"{max(1.0, timeout):.1f}",
@@ -258,14 +332,63 @@ def rank_preferred(results: list[dict], preferred: list[str]) -> tuple[list[dict
     return [item for _, item in ordered], len(marked)
 
 
+STOPWORDS = {
+    "the", "and", "for", "with", "without", "from", "that", "this", "are", "was",
+    "you", "can", "how", "what", "why", "does", "did", "not", "but", "has", "have",
+}
+
+
+def _norm(text: str) -> str:
+    """去掉空格与符号再比对，让 tan x 与 tanx、x^3 与 x3 能对上。"""
+    return re.sub(r"[^a-z0-9\u4e00-\u9fff]", "", (text or "").lower())
+
+
+def query_terms(query: str) -> list[str]:
+    tokens = [t for t in re.findall(r"[a-z0-9]{2,}", query.lower()) if t not in STOPWORDS]
+    for run in re.findall(r"[\u4e00-\u9fff]{2,}", query):
+        tokens.extend(run[i:i + 2] for i in range(len(run) - 1))
+    return list(dict.fromkeys(tokens))
+
+
+def is_relevant(item: dict, terms: list[str]) -> bool:
+    """标题+摘要至少命中三分之一的查询词；反爬降级页常整页跑题，靠这一关拦掉。"""
+    if not terms:
+        return True
+    text = _norm(item["title"] + item["snippet"])
+    need = max(1, (len(terms) + 2) // 3)
+    return sum(1 for term in terms if term in text) >= need
+
+
+def _candidate(results: list[dict], provider: str, relaxed: bool, weak: bool) -> dict:
+    return {
+        "results": results,
+        "provider": provider,
+        "relaxed": relaxed,
+        "weak": weak,
+        "snippets": sum(1 for item in results if item["snippet"]),
+    }
+
+
+def _better(new: dict, old: dict) -> bool:
+    """先看是否达标，再看带摘要条数，最后才比总条数：宁可少而全，不要多而空。"""
+    if not new["results"]:
+        return False
+    if not old["results"]:
+        return True
+    if new["weak"] != old["weak"]:
+        return old["weak"]
+    if new["snippets"] != old["snippets"]:
+        return new["snippets"] > old["snippets"]
+    return len(new["results"]) > len(old["results"])
+
+
 def search_once(query: str, args: argparse.Namespace, include: list[str],
-                preferred: list[str], deadline: int) -> tuple[list[dict], str, list[dict], bool]:
-    """对一个查询跑一遍引擎回退链，返回（结果、provider、尝试记录、是否放宽了域名白名单）。"""
-    providers = ["brave", "yahoo"] if args.engine == "auto" else [args.engine]
+                preferred: list[str], deadline: int) -> tuple[dict, list[dict]]:
+    """对一个查询跑一遍引擎回退链，返回（最佳候选、尝试记录）。"""
+    providers = ["brave", "yahoo", "bing"] if args.engine == "auto" else [args.engine]
     attempts: list[dict] = []
-    best: list[dict] = []
-    best_provider = "none"
-    best_relaxed = False
+    best = _candidate([], "none", False, True)
+    terms = query_terms(query)
 
     for name in providers:
         remaining = (deadline - now_ms()) / 1000
@@ -283,15 +406,14 @@ def search_once(query: str, args: argparse.Namespace, include: list[str],
                 continue
             reason = ""
         else:
-            url = (BRAVE_URL if name == "brave" else YAHOO_URL).format(
-                urllib.parse.quote_plus(query))
+            url = URLS[name].format(urllib.parse.quote_plus(query))
             page, reason = fetch(url, remaining)
             if reason:
                 attempts.append({"provider": PROVIDERS[name], "status": "error",
                                  "reason": reason, "resultCount": 0})
                 continue
 
-        raw = parse_brave(page) if name == "brave" else parse_yahoo(page)
+        raw = PARSERS[name](page)
         if not raw:
             # 只在解析不到结果时查反爬：正常结果页正文出现 captcha 字样不算被拦
             blocked = detect_challenge(page)
@@ -309,6 +431,11 @@ def search_once(query: str, args: argparse.Namespace, include: list[str],
             seen.add(key)
             unique.append(item)
 
+        # 反爬降级页会给一堆带摘要但完全跑题的结果，先按查询词相关性筛掉
+        on_topic = [item for item in unique if is_relevant(item, terms)]
+        irrelevant = len(unique) - len(on_topic)
+        unique = on_topic
+
         filtered = [item for item in unique
                     if not include or any(domain_match(host_of(item["url"]), d) for d in include)]
         relaxed = False
@@ -317,7 +444,8 @@ def search_once(query: str, args: argparse.Namespace, include: list[str],
             filtered, relaxed = unique, True
         if not filtered:
             attempts.append({"provider": PROVIDERS[name], "status": "empty",
-                             "reason": "no-results", "resultCount": 0})
+                             "reason": "no-relevant-results" if irrelevant else "no-results",
+                             "resultCount": 0, "relevanceDropped": irrelevant})
             continue
 
         ranked, _ = rank_preferred(filtered, preferred)
@@ -327,20 +455,21 @@ def search_once(query: str, args: argparse.Namespace, include: list[str],
                              "reason": "budget-exhausted", "resultCount": 0})
             continue
 
-        weak = (relaxed or len(kept) < args.min_results
-                or not any(item["title"] or item["snippet"] for item in kept))
+        snippets = sum(1 for item in kept if item["snippet"])
+        weak = relaxed or len(kept) < args.min_results or snippets == 0
         attempts.append({
             "provider": PROVIDERS[name], "status": "degraded" if weak else "ok",
             "reason": "filter-relaxed" if relaxed else ("weak-results" if weak else ""),
-            "resultCount": len(kept), "budgetOmittedResults": omitted,
-            "filterRelaxed": relaxed,
+            "resultCount": len(kept), "snippetCount": snippets,
+            "budgetOmittedResults": omitted, "filterRelaxed": relaxed,
+            "relevanceDropped": irrelevant,
         })
-        if not best or (best_relaxed and not relaxed) or (
-                relaxed == best_relaxed and len(kept) > len(best)):
-            best, best_provider, best_relaxed = kept, PROVIDERS[name], relaxed
+        candidate = _candidate(kept, PROVIDERS[name], relaxed, weak)
+        if _better(candidate, best):
+            best = candidate
         if not weak:
             break
-    return best, best_provider, attempts, best_relaxed
+    return best, attempts
 
 
 def run(args: argparse.Namespace) -> tuple[dict, int]:
@@ -354,36 +483,34 @@ def run(args: argparse.Namespace) -> tuple[dict, int]:
         queries.append(fallback)
 
     attempts: list[dict] = []
-    best: list[dict] = []
-    best_provider = "none"
-    filter_relaxed = False
+    best = _candidate([], "none", False, True)
     used_query = queries[0]
     for query in queries:
-        got, provider, tries, relaxed = search_once(
-            query, args, include, preferred, deadline)
+        got, tries = search_once(query, args, include, preferred, deadline)
         attempts.extend(tries)
-        # 放宽过白名单的结果先兜底；备选查询若拿到站内结果，再覆盖它
-        if got and (not best or not relaxed):
-            best, best_provider, used_query, filter_relaxed = got, provider, query, relaxed
-        if best and not filter_relaxed:
+        if _better(got, best):
+            best, used_query = got, query
+        # 达标即停；只有结果弱（含摘要全空、白名单放宽）才继续下一个查询
+        if best["results"] and not best["weak"]:
             break
 
+    results = best["results"]
     elapsed = now_ms() - started
-    result_chars = sum(len(i["title"]) + len(i["url"]) + len(i["snippet"]) for i in best)
-    ok = bool(best) and attempts and attempts[-1]["status"] == "ok"
+    result_chars = sum(len(i["title"]) + len(i["url"]) + len(i["snippet"]) for i in results)
+    ok = bool(results) and not best["weak"]
     first_failure = next((a["reason"] for a in attempts if a["status"] != "ok"), "")
     payload = {
-        "status": "ok" if ok else ("degraded" if best else "error"),
+        "status": "ok" if ok else ("degraded" if results else "error"),
         "source": "web-search",
         "query": used_query,
         "queriesTried": queries,
         "fallbackUsed": used_query != queries[0],
-        "filterRelaxed": filter_relaxed,
+        "filterRelaxed": best["relaxed"],
         "route": args.engine,
-        "provider": best_provider if best else "none",
+        "provider": best["provider"] if results else "none",
         "providerAttempts": attempts,
         "firstFailureReason": first_failure,
-        "results": best,
+        "results": results,
         "elapsedMs": elapsed,
         "apiKeyUsed": False,
         "outputBudgetChars": args.max_chars,
@@ -395,24 +522,23 @@ def run(args: argparse.Namespace) -> tuple[dict, int]:
             "reason": "" if ok else (first_failure or "no-results"),
         },
     }
-    if ok:
-        return payload, 0
-    return payload, (1 if best else 2)
+    return payload, (0 if ok else (1 if results else 2))
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("query", help="检索词；用题目核心式，不塞整段题面")
-    parser.add_argument("--engine", choices=["auto", "brave", "yahoo"], default="auto")
+    parser.add_argument("--engine", choices=["auto", "brave", "yahoo", "bing"], default="auto")
     parser.add_argument("--max-results", type=int, default=5)
     parser.add_argument("--min-results", type=int, default=1, help="低于该数判 weak")
     parser.add_argument("--timeout", type=float, default=30.0, help="整条链路总预算（秒）")
     parser.add_argument("--max-chars", type=int, default=2800, help="title+url+snippet 字符预算")
     parser.add_argument("--include-domains", default="", help="只保留这些域名，逗号分隔；全滤空时降级保留并标 filterRelaxed")
     parser.add_argument("--preferred-domains", default="", help="这些域名排前面，逗号分隔")
-    parser.add_argument("--fallback-query", default="", help="首个查询无结果时再试的备选查询（如英文关键词）")
+    parser.add_argument("--fallback-query", default="", help="首个查询无结果或结果弱时再试的备选查询（如英文关键词）")
     parser.add_argument("--fixture-brave", help="离线 Brave 结果页 HTML")
     parser.add_argument("--fixture-yahoo", help="离线 Yahoo 结果页 HTML")
+    parser.add_argument("--fixture-bing", help="离线 Bing 结果页 HTML")
     args = parser.parse_args()
 
     try:
