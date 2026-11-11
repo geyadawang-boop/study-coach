@@ -1,0 +1,43 @@
+{
+  "name": "study-coach",
+  "version": "5.2.0",
+  "private": true,
+  "description": "通用学习教练 Agent Skill：把教材、考纲、真题变成可恢复的备考流水线",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/geyadawang-boop/study-coach.git"
+  },
+  "bin": {
+    "study-coach": "npm/bin/study-coach.js"
+  },
+  "files": [
+    "SKILL.md",
+    "README.md",
+    "checks.json",
+    "agents/",
+    "references/",
+    "scripts/",
+    "subjects/",
+    "evals/",
+    "知识库模板/",
+    "npm/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "checks": "python scripts/run_checks.py --skill-root .",
+    "checks:kb": "python scripts/run_checks.py --skill-root . --kb 知识库模板",
+    "eval:route": "python scripts/route.py --eval evals/routing.jsonl",
+    "pack:check": "npm pack --dry-run"
+  },
+  "keywords": [
+    "agent-skill",
+    "study",
+    "exam",
+    "tutor",
+    "fsrs",
+    "education"
+  ]
+}

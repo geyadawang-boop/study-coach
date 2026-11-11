@@ -20,6 +20,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       # 核心依赖只用标准库；未装 PyMuPDF/fsrs/sympy 时相关检查显式 SKIP。
+      - name: npm pack smoke
+        run: |
+          node npm/bin/study-coach.js --version
+          npm pack --dry-run
+
       - name: Acceptance checks
         run: python scripts/run_checks.py --skill-root .
 

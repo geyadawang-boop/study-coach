@@ -154,7 +154,19 @@ pip install pymupdf         # PDF 文本层/渲染；未装时 PDF 相关脚本�
 pip install sympy           # 步骤等价与特殊值验算
 ```
 
-### 2. 第一次对话
+### 2. npm 打包分发（可选，不替代 Python）
+
+仓库带 `package.json` 与零依赖安装器，只做本地 / Release 分发，不发布 npm registry：
+
+```bash
+npm pack                                    # 产出 study-coach-5.2.0.tgz
+npx ./study-coach-5.2.0.tgz install --dest ~/.trae-cn/skills/study-coach
+npx ./study-coach-5.2.0.tgz doctor --dest ~/.trae-cn/skills/study-coach
+```
+
+`install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 35 项验收，所以 Python 3.9+ 仍是硬要求，npm 只负责搬文件。
+
+### 3. 第一次对话
 
 直接说你要准备什么考试、手上有什么资料：
 
@@ -164,7 +176,7 @@ pip install sympy           # 步骤等价与特殊值验算
 
 Skill 会先收「主教材 / 考纲 / 考试信息」三件套，再按三层四标入库、检测缺口、建知识地图，然后才开始讲。
 
-### 3. 常用说法
+### 4. 常用说法
 
 | 你说 | 它会做 |
 | --- | --- |
@@ -204,6 +216,7 @@ Skill 会先收「主教材 / 考纲 / 考试信息」三件套，再按三层�
 ```text
 study-coach/
 ├── SKILL.md                 # 技能入口：触发语、主循环、硬规则、完成标准
+├── package.json             # npm pack 清单，version 与 git tag 对齐
 ├── checks.json              # 35 项验收清单
 ├── references/              # 9 份协议文档 + capabilities.json（31 项能力契约）
 │   ├── source-layers.md     # 资料分层、冲突裁决、缺口检测
@@ -219,6 +232,7 @@ study-coach/
 ├── subjects/calculus/       # 学科插件：考纲、渲染、题型、误解库、术语
 ├── 知识库模板/              # 可直接复制的学习库骨架，含示例讲义与记录
 ├── evals/                   # 27 条行为用例、29 条检索、54 条路由、17 个 fixture
+├── npm/bin/study-coach.js   # 零依赖安装器：install / doctor
 └── agents/openai.yaml       # Agent 接口描述
 ```
 
