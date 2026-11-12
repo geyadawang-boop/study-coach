@@ -220,10 +220,22 @@ def _invoke_embedding(texts: list[str]) -> tuple[list[list[float]], str]:
     if not isinstance(vectors, list) or len(vectors) != len(texts):
         raise RuntimeError("嵌入返回条数与输入不一致")
     cleaned: list[list[float]] = []
-    for vector in vectors:
+    dim: int | None = None
+    for index, vector in enumerate(vectors, 1):
         if not isinstance(vector, list) or not vector:
-            raise RuntimeError("嵌入返回值必须是向量数组")
-        cleaned.append([float(value) for value in vector])
+            raise RuntimeError(f"第 {index} 条嵌入不是非空向量")
+        try:
+            row = [float(value) for value in vector]
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(f"第 {index} 条嵌入含非数值元素") from exc
+        if not all(math.isfinite(value) for value in row):
+            raise RuntimeError(f"第 {index} 条嵌入含 NaN/Inf")
+        if dim is None:
+            dim = len(row)
+        elif len(row) != dim:
+            raise RuntimeError(f"第 {index} 条嵌入维度 {len(row)} 与首条 {dim} 不一致")
+        cleaned.append(row)
+    # 这里校验通过才会进入写盘分支；失败时调用方返回非 0，旧缓存保持不变。
     return cleaned, _embedding_identity()
 
 

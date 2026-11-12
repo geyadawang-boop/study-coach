@@ -162,12 +162,12 @@ pip install sympy           # 步骤等价与特殊值验算
 仓库带 `package.json` 与零依赖安装器，只做本地 / Release 分发，不发布 npm registry：
 
 ```bash
-npm pack                                    # 产出 study-coach-5.6.0.tgz
-npx ./study-coach-5.6.0.tgz install --dest ~/.trae-cn/skills/study-coach
-npx ./study-coach-5.6.0.tgz doctor --dest ~/.trae-cn/skills/study-coach
+npm pack                                    # 产出 study-coach-5.6.1.tgz
+npx ./study-coach-5.6.1.tgz install --dest ~/.trae-cn/skills/study-coach
+npx ./study-coach-5.6.1.tgz doctor --dest ~/.trae-cn/skills/study-coach
 ```
 
-`install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 35 项验收，所以 Python 3.11+（推荐 3.12 / 3.13）是硬要求，低于 3.11 会直接给出提示并以 2 退出，npm 只负责搬文件。
+`install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 36 项验收，所以 Python 3.11+（推荐 3.12 / 3.13）是硬要求，低于 3.11 会直接给出提示并以 2 退出，npm 只负责搬文件。
 
 ### 3. 第一次对话
 
@@ -221,7 +221,7 @@ Skill 会先收「主教材 / 考纲 / 考试信息」三件套，再按三层�
 study-coach/
 ├── SKILL.md                 # 技能入口：触发语、主循环、硬规则、完成标准
 ├── package.json             # npm pack 清单，version 与 git tag 对齐
-├── checks.json              # 35 项验收清单
+├── checks.json              # 36 项验收清单
 ├── references/              # 9 份协议文档 + capabilities.json（31 项能力契约）
 │   ├── source-layers.md     # 资料分层、冲突裁决、缺口检测
 │   ├── lecture-and-drill.md # 九步讲义循环、七段讲题、三层追问
@@ -247,10 +247,10 @@ study-coach/
 
 ```bash
 python scripts/run_checks.py --skill-root .
-# passed=34 failed=0 skipped=1     ← skipped 是 kb_health，未指定 --kb 不体检
+# passed=35 failed=0 skipped=1     ← skipped 是 kb_health，未指定 --kb 不体检
 
 python scripts/run_checks.py --skill-root . --kb <你的学习库>
-# passed=35 failed=0 skipped=0
+# passed=36 failed=0 skipped=0
 
 python scripts/route.py --eval evals/routing.jsonl
 # top1=53/54 (98%)  top3=54/54 (100%)
@@ -262,7 +262,7 @@ python scripts/route.py --eval evals/routing.jsonl
 
 | 项目 | 数量 / 结果 |
 | --- | --- |
-| 验收检查 | 35 项；带 `--kb` 时 35 PASS，不带时 34 PASS + 1 SKIP |
+| 验收检查 | 36 项；带 `--kb` 时 36 PASS，不带时 35 PASS + 1 SKIP |
 | 可执行脚本 | 27 个 |
 | 能力契约 | 31 项，entry/reference 全部指向真实文件 |
 | 行为评测 | 27 条 |
@@ -288,7 +288,7 @@ python scripts/route.py --eval evals/routing.jsonl
 
 这些数字由脚本产出，不靠 README 自证；`run_checks.py` 会检查 `checks.json` 与实现是否一致。
 
-需要说清口径：35 项验收是**格式与工程约束**（schema、退出码、字段、降级路径、样例可跑），`explain_lint.py` 只检查段落与结构，两者都不判断讲课内容在学科上是否正确。教学质量仍要靠真题对错、退出票与人工复核来验收，不能把「全 PASS」当成学科正确率证明。
+需要说清口径：36 项验收是**格式与工程约束**（schema、退出码、字段、降级路径、样例可跑），`explain_lint.py` 只检查段落与结构，两者都不判断讲课内容在学科上是否正确。教学质量仍要靠真题对错、退出票与人工复核来验收，不能把「全 PASS」当成学科正确率证明。
 
 ## 设计原则
 
@@ -304,7 +304,7 @@ python scripts/route.py --eval evals/routing.jsonl
 ## 已知边界
 
 - `explain_lint.py` 只查结构下限，不评讲解质量；文风与类比是否贴切仍靠模型自评与用户反馈。
-- 第二个学科包 `subjects/history` 只是中国古代史与近代史的默认范围模板，用来证明验证策略能跨学科下沉，不是完整历史教材。
+- 第二个学科包 `subjects/history` 只是中国古代史与近代史的默认范围模板，用来证明验证策略能跨学科下沉，不是完整历史教材。考点分布不给无来源的百分比；误解库证据统一标 `[待补证据]`，补齐前只作定性提醒。
 - 跨学科改写评测只有 16 条、语料 11 篇文档，不能当成教材级检索质量证明；真实嵌入模型需本机下载，CI 只跑字面基线。
 - OCR 与多栏切题的 bbox 需要模型复核，低置信内容标「待核」，不自动猜。
 - 路由 top1 为 98%：个别说法（如「只给范围没给大纲」）会先命中讲义入口，但 top3 能兜住。

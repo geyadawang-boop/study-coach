@@ -123,7 +123,7 @@ def table_data_rows(text: str) -> int:
         if any(cells) and all(re.fullmatch(r":?-{2,}:?", cell) for cell in cells if cell):
             in_body = True
             continue
-        if in_body:
+        if in_body and any(cells):
             count += 1
     return count
 

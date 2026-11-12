@@ -472,6 +472,54 @@ def check_index_roundtrip(root: Path) -> list[dict]:
                 "error",
                 f"不完整缓存普通 embed 未重建：{repaired.stdout.strip() or repaired.stderr.strip()}",
             ))
+
+        # 构建阶段就要校验向量：维度不一致或非有限值必须拒绝，
+        # 且失败不能覆盖原本可用的缓存。
+        before = cache.read_bytes()
+        bad_cases = [
+            ("维度不一致",
+             "import json, sys\n"
+             "texts = json.load(sys.stdin)\n"
+             "vecs = [[1.0, 0.0] for _ in texts]\n"
+             "if vecs:\n"
+             "    vecs[0] = [1.0]\n"
+             "print(json.dumps(vecs))\n"),
+            ("非有限数值",
+             "import json, sys\n"
+             "texts = json.load(sys.stdin)\n"
+             "vecs = [[1.0, 0.0] for _ in texts]\n"
+             "if vecs:\n"
+             "    vecs[0] = [float('nan'), 0.0]\n"
+             "print(json.dumps(vecs))\n"),
+        ]
+        for label, source in bad_cases:
+            bad = Path(tmp) / "bad_embed.py"
+            bad.write_text(source, encoding="utf-8")
+            bad_env = dict(env)
+            bad_env["STUDY_COACH_EMBED_CMD"] = f'"{sys.executable}" "{bad}"'
+            bad_env.pop("STUDY_COACH_EMBED_NAME", None)
+            rejected = subprocess.run(
+                [sys.executable, str(script), "embed", str(db), "--force"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace", env=bad_env,
+            )
+            if rejected.returncode != 3:
+                out.append(finding(
+                    "error",
+                    f"{label}的嵌入输出未被拒绝：返回 {rejected.returncode} "
+                    f"{rejected.stdout.strip() or rejected.stderr.strip()}",
+                ))
+            if cache.read_bytes() != before:
+                out.append(finding("error", f"{label}的嵌入失败仍覆盖了旧缓存"))
+        still = subprocess.run(
+            [sys.executable, str(script), "search", str(db), "未定式", "--top", "2",
+             "--mode", "semantic"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if still.returncode != 0 or "LEC-001" not in still.stdout:
+            out.append(finding(
+                "error",
+                f"坏嵌入被拒后旧缓存不可用：{still.stdout.strip() or still.stderr.strip()}",
+            ))
     return out
 
 
@@ -598,6 +646,37 @@ def check_explain_lint(root: Path) -> list[dict]:
                     "error", f"验证段为空未被报告：{data.get('missing')}",
                 ))
 
+    # 验证段表格存在但全为空单元格行时，同样不能算有效验证数据。
+    blank_rows = re.sub(
+        r"(##\s*数值验证[^\n]*\n).*?(?=##\s*对比表)",
+        r"\1\n| $x$ | 结果 |\n| --- | --- |\n|   |   |\n\n",
+        follow, flags=re.S,
+    )
+    if blank_rows == follow:
+        out.append(finding("error", "全空表格行负样例构造失败：模式未命中"))
+    else:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "blank-rows.md"
+            path.write_text(blank_rows, encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, str(script), str(path), "--level", "followup",
+                 "--verify", "numeric", "--json"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+        if proc.returncode != 1:
+            out.append(finding(
+                "error", f"全空表格行返回 {proc.returncode}（期望 1）：{proc.stdout.strip()}",
+            ))
+        else:
+            try:
+                data = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                data = {}
+            if not any("验证段" in item for item in data.get("missing") or []):
+                out.append(finding(
+                    "error", f"全空表格行未被报告：{data.get('missing')}",
+                ))
+
     policy_positive = [
         ("history 学科包接受证据核对表", "evals/fixtures/explain-followup-humanities-good.md",
          ["--subject", "history"]),
@@ -637,6 +716,30 @@ def check_explain_lint(root: Path) -> list[dict]:
     )
     if unknown.returncode != 2:
         out.append(finding("error", f"未知学科包未退出 2：{unknown.returncode}"))
+    return out
+
+
+def check_history_sources(root: Path) -> list[dict]:
+    """历史包内容证据：默认不给无来源权重，泛指证据标为待补。"""
+    out: list[dict] = []
+    patterns = root / "subjects/history/exam-patterns.md"
+    misconceptions = root / "subjects/history/misconceptions.md"
+    if not patterns.is_file() or not misconceptions.is_file():
+        return [finding("error", "缺 subjects/history/exam-patterns.md 或 misconceptions.md")]
+    text = patterns.read_text(encoding="utf-8", errors="replace")
+    weights = re.findall(r"\d+(?:\.\d+)?\s*%", text)
+    if weights:
+        out.append(finding("error", f"exam-patterns.md 含无来源数值权重：{weights}"))
+    for needle in ("默认不提供", "至少 3 套", "样本量", "来源"):
+        if needle not in text:
+            out.append(finding("error", f"exam-patterns.md 缺「{needle}」的取证要求"))
+    lines = misconceptions.read_text(encoding="utf-8", errors="replace").splitlines()
+    evidence = [line.strip() for line in lines if "**证据**" in line]
+    if len(evidence) < 6:
+        out.append(finding("error", f"misconceptions.md 证据条目只有 {len(evidence)} 条"))
+    vague = [line for line in evidence if "[待补证据]" not in line]
+    if vague:
+        out.append(finding("error", f"misconceptions.md 有未标待补的证据：{vague[:2]}"))
     return out
 
 
@@ -2613,6 +2716,7 @@ CHECKS = {
     "review_schedule": lambda root, kb: check_review_schedule(root),
     "step_check": lambda root, kb: check_step_check(root),
     "explain_lint": lambda root, kb: check_explain_lint(root),
+    "history_sources": lambda root, kb: check_history_sources(root),
     "solution_research": lambda root, kb: check_solution_research(root),
     "web_search": lambda root, kb: check_web_search(root),
     "obsidian_cards": lambda root, kb: check_obsidian_cards(root),

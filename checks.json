@@ -39,7 +39,7 @@
     {
       "id": "index_roundtrip",
       "level": "error",
-      "desc": "kb_index.py 能自动创建索引父目录、建 FTS5 索引、检索中文子串并按四类过滤；带引号的查询不崩，kind 无命中退出 1；可选语义检索用假嵌入后端验证 embed 缓存、semantic 模式与 hybrid 第三路融合，等长改字后缓存按内容哈希失效，同维换模型按身份拒绝旧缓存，缓存条目缺失时拒绝并重建，缺缓存退出 3"
+      "desc": "kb_index.py 能自动创建索引父目录、建 FTS5 索引、检索中文子串并按四类过滤；带引号的查询不崩，kind 无命中退出 1；可选语义检索用假嵌入后端验证 embed 缓存、semantic 模式与 hybrid 第三路融合，等长改字后缓存按内容哈希失效，同维换模型按身份拒绝旧缓存，缓存条目缺失时拒绝并重建，缺缓存退出 3；构建阶段校验向量条数、维度一致与非有限值，坏输出退出 3 且不覆盖旧缓存"
     },
     {
       "id": "retrieval_eval",
@@ -109,7 +109,12 @@
     {
       "id": "explain_lint",
       "level": "error",
-      "desc": "explain_lint.py 校验讲题稿七段、追问稿三层与多解稿：好样例 PASS（含文科追问稿的证据核对表），--subject 读学科包 verify 策略（calculus=numeric 拒绝证据标题，history=evidence 接受证据核对表并拒绝数值标题，未知学科退出 2），追问稿只统计验证段内的表格数据行（其他章节有表格不能顶替），缺易错点/视角/来源/过短结论退出 1，只有核心段时判讲题稿而不是含糊的 both"
+      "desc": "explain_lint.py 校验讲题稿七段、追问稿三层与多解稿：好样例 PASS（含文科追问稿的证据核对表），--subject 读学科包 verify 策略（calculus=numeric 拒绝证据标题，history=evidence 接受证据核对表并拒绝数值标题，未知学科退出 2），追问稿只统计验证段内的表格数据行（其他章节有表格不能顶替，全空单元格行也不算数据行），缺易错点/视角/来源/过短结论退出 1，只有核心段时判讲题稿而不是含糊的 both"
+    },
+    {
+      "id": "history_sources",
+      "level": "error",
+      "desc": "历史包内容证据：exam-patterns.md 不出现无来源的百分比权重并写明至少 3 套真题、样本量与来源要求；misconceptions.md 每条证据都标 [待补证据] 且不少于 6 条"
     },
     {
       "id": "solution_research",
