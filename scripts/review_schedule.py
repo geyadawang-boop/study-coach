@@ -311,7 +311,7 @@ def main() -> int:
                 "schema": 1,
                 "id": f"REV-{next_id:04d}",
                 "card_id": card_id,
-                "ts": at.date().isoformat(),
+                "ts": at.isoformat(),
                 "rating": rating,
                 "interval_days": int(round(info["interval_days"] or 0)),
                 "due": info["due_date"],

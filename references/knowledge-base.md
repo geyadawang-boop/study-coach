@@ -140,7 +140,7 @@
 ## reviews.jsonl
 
 ```json
-{"schema":1,"id":"REV-0004","card_id":"CARD-0007","ts":"2026-11-07","rating":3,"step_scores":[3,2,3],"interval_days":7,"due":"2026-11-14"}
+{"schema":1,"id":"REV-0004","card_id":"CARD-0007","ts":"2026-11-07T14:20:00+08:00","rating":3,"step_scores":[3,2,3],"interval_days":7,"due":"2026-11-14"}
 ```
 
 多步卡先逐步问，把最弱一步记进 `rating`；`step_scores` 可选，记录每步评分，`rating` 必须等于其中的最小值。
@@ -155,7 +155,7 @@ python scripts/review_schedule.py --kb 学习库
 python scripts/review_schedule.py --kb 学习库 --grade CARD-0007:3 --at 2026-11-08 --record
 ```
 
-调度器每次从 `records/reviews.jsonl` 按 `ts` 顺序重建状态，不另存黑箱；`--engine ladder` 或未装 `fsrs` 时退回下表，字段完全一致。`--record` 写回时 `interval_days` 取整天、`due` 只存日期（视图按天比较）；要精确到分钟看命令输出里的 `due`。旧记录缺 `engine` 按 FSRS 正常回放。
+调度器每次从 `records/reviews.jsonl` 按 `ts` 顺序重建状态，不另存黑箱；`--engine ladder` 或未装 `fsrs` 时退回下表，字段完全一致。`--record` 写回时 `ts` 保留完整时间与偏移（如 `2026-11-07T14:20:00+08:00`），同一天多次复习不会合并；旧记录只有日期时按当天 09:00 +08:00 兼容回放。`interval_days` 取整天、`due` 只存日期（视图按天比较）；要精确到分钟看命令输出里的 `due`。旧记录缺 `engine` 按 FSRS 正常回放。
 
 四档阶梯（仅作降级与对照）：
 
@@ -195,11 +195,17 @@ python scripts/kb_index.py search 学习库/.index/index.db "洛必达 适用条
 python scripts/kb_index.py search 学习库/.index/index.db "洛必达" --mode vector
 python scripts/kb_index.py eval 学习库/.index/index.db evals/retrieval.jsonl --top 5
 
+# 可选语义检索：先建嵌入缓存，再用 semantic / hybrid 第三路
+python scripts/kb_index.py embed 学习库/.index/index.db
+python scripts/kb_index.py search 学习库/.index/index.db "未定式怎么处理" --mode semantic
+
 # 按考点导出可打印习题册（题目区 + 答案区）
 python scripts/export_book.py --kb 学习库 --concept 极限 --format html
 ```
 
 检索结果按路径回读原文，不把片段当引用。
+
+语义检索不是默认能力：`embed` 优先读 `STUDY_COACH_EMBED_CMD`（stdin 收 JSON 字符串数组、stdout 回 JSON 向量数组），其次用已安装的 `sentence-transformers`，两者都没有就退出 3。缓存 `embeddings.jsonl` 与 `index.db` 同目录，条数或总字符数对不上会要求 `--force` 重建；没有缓存时默认 hybrid 仍是 BM25 + 字符 bigram 两路，行为不变。
 
 ## 双链反查
 
@@ -259,7 +265,7 @@ python scripts/cheatsheet.py --kb 学习库 --format html --max-formulas 6
 - 默认 query 集在 skill 的 `evals/retrieval.jsonl`，覆盖 `subjects/calculus/` 的真实中文问法；有自己的笔记后复制到学习库并只增不删；
 - 每行 `{"query": "...", "expect": ["LEC-002", "misconceptions.md"]}`，`expect` 命中路径或标题即算命中；
 - 跑 `python scripts/kb_index.py eval <db> evals/retrieval.jsonl --top 5 --mode hybrid`，看 hit@5 与 MRR；
-- 三种模式都可跑：`hybrid`（默认，RRF 融合）、`bm25`、`vector`（字符 bigram 余弦）；hybrid 低于全中基线时先查切块粒度与别名，不调 BM25 权重；
+- 三种模式都可跑：`hybrid`（默认，RRF 融合）、`bm25`、`vector`（字符 bigram 余弦）；建过嵌入缓存后另有 `semantic`，hybrid 也会自动加第三路。hybrid 低于全中基线时先查切块粒度与别名，不调 BM25 权重；
 - 改过切块规则或公式归一后，先删 `.index/` 再 `build`，否则未变文件会沿用旧切块（构建输出里的 skipped 即未变文件数）；
 - query 集只增不删，旧题命不中说明切块退化，不是"题目过时"。
 

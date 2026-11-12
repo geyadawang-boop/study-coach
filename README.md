@@ -18,7 +18,7 @@ A general-purpose exam-prep coach skill for AI agents. It turns textbooks, sylla
 - 讲题不是散文：讲题稿固定七段，追问固定三层，缺段由脚本判失败。
 - 错误不是一句「粗心」：按概念 / 运算 / 表述 / 方法选择 / 审题五类归因。
 - 复习不是拍脑袋：按 `reviews.jsonl` 回放 FSRS，算下次到期。
-- 结论不靠文风：能符号验算就先验算，未验的标 `[未验]`。
+- 结论不靠文风：验证方式由 `subjects/<学科>/verification.md` 决定——计算题验符号/数值，实验题查变量与对照，论述题查证据与评分点；未验的标 `[未验]`。
 
 ## 适合谁
 
@@ -27,7 +27,7 @@ A general-purpose exam-prep coach skill for AI agents. It turns textbooks, sylla
 | 有明确考试的学生 | 期末、考研、资格证、语言考试，手上有教材 / 考纲 / 真题 |
 | 自学者 | 需要把零散资料整理成范围、知识地图和复习队列 |
 | 一对一辅导场景 | 需要稳定产出讲题稿、批改结论、变式题与复习计划 |
-| 想审计 AI 讲解的人 | 每个结论要求来源页码或验算记录，不接受「显然」 |
+| 想审计 AI 讲解的人 | 每个结论要求来源页码或验证记录，不接受「显然」 |
 
 **不适合**：多学生隔离 / 租户、共享题库、K12 课标图谱。这些在需求阶段就明确不做，代码里也没有预留半成品。
 
@@ -121,7 +121,7 @@ Brave → Yahoo → Bing 顺序回退，`status=ok` 即停；结果带标题与�
 ### 5. 知识库、检索与报告
 
 - 三平面存储：`notes/` 叙述层、`records/` 记录层、`views/` 可重建派生层。`records/*.jsonl` 以追加为主；卡片 `status`、错题 `count/status`、复习 `due` 这类状态字段允许原地更新，历史仍以 `reviews.jsonl` 回放为准。
-- 混合检索：SQLite FTS5（BM25）+ 字符 bigram 余弦 + RRF，可降级到 `bm25` 或 `vector`。
+- 混合检索：SQLite FTS5（BM25）+ 字符 bigram 余弦 + RRF，可降级到 `bm25` 或 `vector`。默认两条字面分支，不依赖任何模型；`kb_index.py embed` 会按 `STUDY_COACH_EMBED_CMD` 或已安装的 `sentence-transformers` 生成 `embeddings.jsonl`，之后 `--mode semantic` 和 hybrid 的第三路语义分支才启用。显式 `--mode semantic` 缺后端或缓存时退出 3；hybrid 只在缓存可用时加第三路，否则保持两路并提示重建。
 - 题型卡片、易错点汇总、学情快照、双链反查、高频困惑点统计。
 - 结构地图：`structure_map.py` 把知识地图按必掌握/高频/了解重排，只画前置依赖，单列未知区域；成环与 `--strict` 门槛可判失败。
 - 一页速查表：`cheatsheet.py` 只收公式+条件、易混对照、识别信号、陷阱清单，输出 A4 黑白打印 HTML；缺易混与陷阱直接判不合格。
@@ -162,9 +162,9 @@ pip install sympy           # 步骤等价与特殊值验算
 仓库带 `package.json` 与零依赖安装器，只做本地 / Release 分发，不发布 npm registry：
 
 ```bash
-npm pack                                    # 产出 study-coach-5.4.0.tgz
-npx ./study-coach-5.4.0.tgz install --dest ~/.trae-cn/skills/study-coach
-npx ./study-coach-5.4.0.tgz doctor --dest ~/.trae-cn/skills/study-coach
+npm pack                                    # 产出 study-coach-5.5.0.tgz
+npx ./study-coach-5.5.0.tgz install --dest ~/.trae-cn/skills/study-coach
+npx ./study-coach-5.5.0.tgz doctor --dest ~/.trae-cn/skills/study-coach
 ```
 
 `install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 35 项验收，所以 Python 3.11+（推荐 3.12 / 3.13）是硬要求，低于 3.11 会直接给出提示并以 2 退出，npm 只负责搬文件。
@@ -204,7 +204,8 @@ Skill 会先收「主教材 / 考纲 / 考试信息」三件套，再按三层�
 | 生成视图 | `python scripts/kb_view.py --kb 学习库` | 资料清单、题型卡片、易错点汇总、学情快照、双链反查 |
 | 困惑统计 | `python scripts/kb_stats.py 学习库/records/confusions.jsonl --output 学习库/views/高频困惑点统计.md` | 高频困惑点 |
 | 建索引 | `python scripts/kb_index.py build 学习库 --db 学习库/.index/index.db` | FTS5 索引，可删可重建 |
-| 检索 | `python scripts/kb_index.py search 学习库/.index/index.db "有理化" --top 5` | 命中笔记与切块 |
+| 检索 | `python scripts/kb_index.py search 学习库/.index/index.db "有理化" --top 5` | 命中笔记与切块；`--mode bm25/vector/semantic` |
+| 语义检索（可选） | `python scripts/kb_index.py embed 学习库/.index/index.db` 后加 `--mode semantic` | 需 `STUDY_COACH_EMBED_CMD` 或 `sentence-transformers`；缺后端退出 3 |
 | 复习排期 | `python scripts/review_schedule.py --kb 学习库` | 到期卡与间隔 |
 | 导出 Obsidian 卡 | `python scripts/export_cards.py --kb 学习库` | `notes/cards/CARD-xxxx-*.md`，一卡一文件 |
 | 结构地图 | `python scripts/structure_map.py --kb 学习库` | `views/结构地图.md`，三档优先级 + 依赖 + 未知区域 |
@@ -232,14 +233,14 @@ study-coach/
 │   ├── research.md          # 检索、引用回指、失败降级
 │   └── tech-stack.md        # 选型、依赖、升级触发条件
 ├── scripts/                 # 27 个可执行脚本
-├── subjects/calculus/       # 学科插件：考纲、渲染、题型、误解库、术语
+├── subjects/calculus/       # 学科插件：考纲、渲染、题型、误解库、术语、验证策略
 ├── 知识库模板/              # 可直接复制的学习库骨架，含示例讲义与记录
-├── evals/                   # 27 条行为用例、29 条检索、54 条路由、19 个 fixture
+├── evals/                   # 27 条行为用例、29 条检索、54 条路由、20 个 fixture
 ├── npm/bin/study-coach.js   # 零依赖安装器：install / doctor
 └── agents/openai.yaml       # Agent 接口描述
 ```
 
-新增学科只写 `subjects/<学科>/`，不改主循环。
+新增学科只写 `subjects/<学科>/`（含 `verification.md` 验证策略），不改主循环。
 
 ## 质量门与实测
 
@@ -254,7 +255,7 @@ python scripts/route.py --eval evals/routing.jsonl
 # top1=53/54 (98%)  top3=54/54 (100%)
 ```
 
-未装 PyMuPDF / fsrs 时，相关检查会显式 SKIP，不会假装 PASS。
+未装 PyMuPDF / fsrs 时，相关检查会显式 SKIP，不会假装 PASS。CI 跑两个 job：`checks` 只用标准库覆盖 3.11–3.13，`full-deps` 装齐 fsrs / sympy / pymupdf 后跑同一批检查，避免可选依赖分支长期只走 SKIP。
 
 当前基线：
 
@@ -270,9 +271,11 @@ python scripts/route.py --eval evals/routing.jsonl
 
 这些数字由脚本产出，不靠 README 自证；`run_checks.py` 会检查 `checks.json` 与实现是否一致。
 
+需要说清口径：35 项验收是**格式与工程约束**（schema、退出码、字段、降级路径、样例可跑），`explain_lint.py` 只检查段落与结构，两者都不判断讲课内容在学科上是否正确。教学质量仍要靠真题对错、退出票与人工复核来验收，不能把「全 PASS」当成学科正确率证明。
+
 ## 设计原则
 
-- **证据优先**：能验算就验算，未验的标 `[未验]`；不靠文风判对错。
+- **证据优先**：按学科包验证（计算验符号/数值，实验查变量与对照，论述查证据与评分点），未验的标 `[未验]`；不靠文风判对错。
 - **不替用户思考**：作业模式先给思路链，用户写出解法再批改。
 - **不编题**：题面、选项、条件缺失先索取；年份、卷别不确定标「待核」。
 - **引用可回指**：`DOC-0001#p58` 或 URL；指不到就删。
@@ -289,7 +292,7 @@ python scripts/route.py --eval evals/routing.jsonl
 - 外部检索依赖网络，超时后显式降级，不会静默卡住。
 - 上下文只能浓缩、不能回收：长会话最终仍会被压缩，所以状态必须落到 `progress.md` 与 `records/`，不靠上下文记忆。
 - StackExchange 只作验算与反例来源，中文题干需先译成英文关键词；它不是考纲依据，也不做首选检索源。
-- PDF / OCR / SymPy 相关检查在依赖缺失时会 SKIP，不会假装通过。
+- PDF / OCR / SymPy 相关检查在依赖缺失时会 SKIP，不会假装通过；CI 的 `full-deps` job 负责把这些分支实际跑到。
 - PyMuPDF 1.28 起 `import fitz` 会向 stdout 打弃用横幅；所有脚本统一走 `fitz_compat.py`，JSON 输出不会被污染。
 - Windows 控制台/管道中文乱码时先设 `$env:PYTHONUTF8="1"`；脚本读写文件已固定 UTF-8。
 

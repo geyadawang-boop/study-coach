@@ -7,8 +7,9 @@ solution (seven parts, all required):
   - 验算与边界 has a table or a special-value check
 
 followup (five parts):
-  问题 / 一句话结论 / at least two 视角 (or 推导/证明) / 数值验证 with a table /
-  one comparison table / closing 一句话总结
+  问题 / 一句话结论 / at least two 视角 (or 推导/证明) /
+  verification heading (数值/验算/特殊值 for math, or 证据/核对/评分点 for other subjects)
+  with a table / one comparison table / closing 一句话总结
 
 multi (multi-solution note):
   题目 / 常规解法 / 多解对比 (table with >=2 solutions and a 适用 column) /
@@ -130,11 +131,12 @@ def check_followup(text: str) -> dict:
     if len(views) < 2:
         missing.append("至少两种视角")
 
-    numeric_head = any(any(word in t for word in ("数值", "验算", "特殊值"))
-                       for _, t in items)
+    verify_head = any(any(word in t for word in ("数值", "验算", "特殊值",
+                                                  "证据", "核对", "评分点", "验证"))
+                      for _, t in items)
     stats["表格行数"] = table_rows(text)
-    if not (numeric_head and stats["表格行数"] >= 1):
-        missing.append("数值验证（标题 + 表格）")
+    if not (verify_head and stats["表格行数"] >= 1):
+        missing.append("验证（标题 + 表格）")
     if stats["表格行数"] < 1:
         missing.append("对比表")
 

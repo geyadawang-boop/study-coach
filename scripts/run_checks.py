@@ -79,6 +79,7 @@ REQUIRED = [
     "subjects/calculus/exam-patterns.md",
     "subjects/calculus/misconceptions.md",
     "subjects/calculus/glossary.md",
+    "subjects/calculus/verification.md",
 ]
 ROUTE = re.compile(r"(?:references/[\w\-./]+\.md|scripts/[\w\-./]+\.py)")
 EVAL_TYPES = {"trigger", "non_trigger", "behavior"}
@@ -344,6 +345,57 @@ def check_index_roundtrip(root: Path) -> list[dict]:
                 "error",
                 f"检索评估失败：{evaluation.stdout.strip() or evaluation.stderr.strip()}",
             ))
+
+        # 语义检索：假嵌入后端把「未定式」与含「洛必达」的切块映射到同一方向，
+        # 验证 embed 缓存、semantic 模式与 hybrid 第三路融合都能跑通。
+        fake = Path(tmp) / "fake_embed.py"
+        fake.write_text(
+            "import json, sys\n"
+            "texts = json.load(sys.stdin)\n"
+            "def vector(text):\n"
+            "    if '洛必达' in text or '未定式' in text:\n"
+            "        return [1.0, 0.0, 0.0]\n"
+            "    if '链式' in text or '复合函数' in text:\n"
+            "        return [0.0, 1.0, 0.0]\n"
+            "    return [0.0, 0.0, 1.0]\n"
+            "print(json.dumps([vector(t) for t in texts]))\n",
+            encoding="utf-8",
+        )
+        env = dict(os.environ)
+        env["STUDY_COACH_EMBED_CMD"] = f'"{sys.executable}" "{fake}"'
+        embed = subprocess.run(
+            [sys.executable, str(script), "embed", str(db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if embed.returncode != 0 or "embedded=" not in embed.stdout:
+            out.append(finding("error", f"嵌入缓存构建失败：{embed.stderr.strip() or embed.stdout.strip()}"))
+        semantic = subprocess.run(
+            [sys.executable, str(script), "search", str(db), "未定式", "--top", "2",
+             "--mode", "semantic"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if semantic.returncode != 0 or "LEC-001" not in semantic.stdout:
+            out.append(finding(
+                "error",
+                f"语义检索失败：{semantic.stdout.strip() or semantic.stderr.strip()}",
+            ))
+        hybrid = subprocess.run(
+            [sys.executable, str(script), "search", str(db), "未定式", "--top", "2"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if hybrid.returncode != 0 or "LEC-001" not in hybrid.stdout:
+            out.append(finding(
+                "error",
+                f"hybrid 未融合语义分支：{hybrid.stdout.strip() or hybrid.stderr.strip()}",
+            ))
+        (Path(tmp) / "embeddings.jsonl").unlink(missing_ok=True)
+        missing = subprocess.run(
+            [sys.executable, str(script), "search", str(db), "未定式", "--top", "2",
+             "--mode", "semantic"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if missing.returncode != 3:
+            out.append(finding("error", f"缺嵌入缓存时 semantic 未退出 3：{missing.returncode}"))
     return out
 
 
@@ -376,6 +428,7 @@ def check_explain_lint(root: Path) -> list[dict]:
     cases = [
         ("讲题稿好样例", "evals/fixtures/explain-solution-good.md", "solution"),
         ("追问稿好样例", "evals/fixtures/explain-followup-good.md", "followup"),
+        ("文科追问稿好样例", "evals/fixtures/explain-followup-humanities-good.md", "followup"),
         ("多解稿好样例", "evals/fixtures/explain-multi-good.md", "multi"),
     ]
     for label, rel, level in cases:
@@ -2112,6 +2165,22 @@ def check_review_schedule(root: Path) -> list[dict]:
                 if (last.get("id") != "REV-0004" or last.get("due") != "2026-11-15"
                         or last.get("engine") != "ladder"):
                     out.append(finding("error", f"--record 写入字段不对：{last}"))
+                if not str(last.get("ts") or "").startswith("2026-11-08T"):
+                    out.append(finding("error", f"--record 把 ts 截成了日期：{last.get('ts')}"))
+
+        # 同一天第二次复习必须保留真实时间，不能被折叠成同一个 9:00
+        proc = subprocess.run(
+            [sys.executable, str(script), "--kb", str(kb),
+             "--at", "2026-11-08T18:30:00+08:00", "--engine", "ladder",
+             "--grade", "CARD-0007:4", "--record"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if proc.returncode != 0:
+            out.append(finding("error", f"同日二次 --record 失败：{proc.stderr.strip()}"))
+        else:
+            lines = [json.loads(line) for line in reviews.read_text(encoding="utf-8").splitlines() if line]
+            if lines[-1].get("ts") != "2026-11-08T18:30:00+08:00":
+                out.append(finding("error", f"同日二次复习未保留时间：{lines[-1].get('ts')}"))
 
         proc = subprocess.run(
             [sys.executable, str(script), "--kb", str(kb), "--grade", "CARD-9999:2", "--record"],

@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""Build and query a local Markdown index with SQLite FTS5 + char-bigram vector.
+"""Build and query a local Markdown index: SQLite FTS5 + char-bigram + optional semantic.
 
-No third-party dependency. Markdown files stay the source of truth; the
+No required third-party dependency. Markdown files stay the source of truth; the
 database is a rebuildable cache. Chinese text uses FTS5 trigram tokenization,
 so BM25 queries need at least 3 characters; vector mode accepts shorter ones.
-Search defaults to hybrid RRF (BM25 + char-bigram cosine).
+Search defaults to hybrid RRF (BM25 + char-bigram cosine). `embed` builds an
+embedding cache through STUDY_COACH_EMBED_CMD or sentence-transformers; with a
+cache present, `--mode semantic` and the hybrid third branch become available.
 
 Usage:
   python kb_index.py build <kb_dir> [--db index.db]
+  python kb_index.py embed <db> [--force]
   python kb_index.py search <db> "query" [--top 5] [--kind 例题] [--mode hybrid]
   python kb_index.py eval <db> <queries.jsonl> [--top 5] [--mode hybrid]
   python kb_index.py stats <db>
 
 Exit codes: 0 = 正常有结果；1 = 无命中（search 输出 no match）或
-eval 未达到全中（属评估信号，不是崩溃）；2 = 库/索引/查询文件不可用。
+eval 未达到全中（属评估信号，不是崩溃）；2 = 库/索引/查询文件不可用；
+3 = 语义检索缺嵌入后端或缓存。
 """
 
 from __future__ import annotations
@@ -21,13 +25,21 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
+import os
 import re
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 
 CHUNK_TARGET = 600
 HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
+EMBED_FILE = "embeddings.jsonl"
+EMBED_CMD_ENV = "STUDY_COACH_EMBED_CMD"
+EMBED_NAME_ENV = "STUDY_COACH_EMBED_NAME"
+EMBED_MODEL_ENV = "STUDY_COACH_EMBED_MODEL"
+DEFAULT_EMBED_MODEL = "BAAI/bge-small-zh-v1.5"
 
 
 def connect(db: Path) -> sqlite3.Connection:
@@ -125,11 +137,141 @@ def _cosine(query: dict[str, int], text: str) -> float:
     dot = sum(value * counts.get(token, 0) for token, value in query.items())
     if not dot:
         return 0.0
-    import math
-
     qnorm = math.sqrt(sum(value * value for value in query.values()))
     tnorm = math.sqrt(sum(value * value for value in counts.values()))
     return dot / (qnorm * tnorm)
+
+
+def _vec_cosine(left: list[float], right: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(left, right))
+    if not dot:
+        return 0.0
+    lnorm = math.sqrt(sum(x * x for x in left))
+    rnorm = math.sqrt(sum(y * y for y in right))
+    return dot / (lnorm * rnorm) if lnorm and rnorm else 0.0
+
+
+def embed_path(db: Path) -> Path:
+    return db.parent / EMBED_FILE
+
+
+def _embed_meta(path: Path) -> dict | None:
+    try:
+        with path.open(encoding="utf-8") as fh:
+            meta = json.loads(fh.readline() or "{}")
+    except (OSError, json.JSONDecodeError):
+        return None
+    return meta if isinstance(meta, dict) else None
+
+
+def _invoke_embedding(texts: list[str]) -> tuple[list[list[float]], str]:
+    """按优先级取嵌入：外部命令 → sentence-transformers；都没有就报错。"""
+    command = os.environ.get(EMBED_CMD_ENV, "").strip()
+    if command:
+        try:
+            proc = subprocess.run(
+                command, shell=True, input=json.dumps(texts, ensure_ascii=False),
+                capture_output=True, text=True, encoding="utf-8", timeout=900,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise RuntimeError(f"嵌入命令执行失败：{exc}") from exc
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"嵌入命令退出 {proc.returncode}：{(proc.stderr or '').strip()[:300]}"
+            )
+        try:
+            vectors = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"嵌入命令输出不是 JSON：{exc}") from exc
+        name = os.environ.get(EMBED_NAME_ENV) or "external-cmd"
+    else:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as exc:
+            raise RuntimeError(
+                "没有可用的嵌入后端：设置 STUDY_COACH_EMBED_CMD，"
+                "或 pip install sentence-transformers"
+            ) from exc
+        name = os.environ.get(EMBED_MODEL_ENV) or DEFAULT_EMBED_MODEL
+        model = SentenceTransformer(name)
+        vectors = model.encode(texts, normalize_embeddings=True).tolist()
+
+    if not isinstance(vectors, list) or len(vectors) != len(texts):
+        raise RuntimeError("嵌入返回条数与输入不一致")
+    cleaned: list[list[float]] = []
+    for vector in vectors:
+        if not isinstance(vector, list) or not vector:
+            raise RuntimeError("嵌入返回值必须是向量数组")
+        cleaned.append([float(value) for value in vector])
+    return cleaned, name
+
+
+def build_embeddings(db: Path, force: bool = False) -> int:
+    conn = open_index(db)
+    try:
+        rows = conn.execute(
+            "SELECT c.id, COALESCE(c.heading, ''), c.text FROM chunks c ORDER BY c.id"
+        ).fetchall()
+        count = len(rows)
+        chars = sum(len(text) for _, _, text in rows)
+        current = conn.execute("SELECT COUNT(*), COALESCE(SUM(LENGTH(text)), 0) FROM chunks").fetchone()
+    finally:
+        conn.close()
+    if not rows:
+        print("no chunks to embed", file=sys.stderr)
+        return 2
+
+    path = embed_path(db)
+    if path.is_file() and not force:
+        meta = _embed_meta(path)
+        if meta and (meta.get("count"), meta.get("chars")) == (current[0], current[1]):
+            print(f"embeddings up to date: {path} chunks={count}")
+            return 0
+
+    texts = [f"{heading}\n{text}" if heading else text for _, heading, text in rows]
+    try:
+        vectors, name = _invoke_embedding(texts)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 3
+
+    with path.open("w", encoding="utf-8") as fh:
+        fh.write(json.dumps(
+            {"model": name, "dim": len(vectors[0]), "count": count, "chars": chars},
+            ensure_ascii=False,
+        ) + "\n")
+        for (chunk_id, _, _), vector in zip(rows, vectors):
+            fh.write(json.dumps({"id": chunk_id, "vec": vector}, ensure_ascii=False) + "\n")
+    print(f"embedded={count} dim={len(vectors[0])} model={name} file={path}")
+    return 0
+
+
+def load_embeddings(db: Path, conn) -> tuple[dict[int, list[float]], dict] | None:
+    """读缓存；条数或总字符数与当前索引不一致就要求重建。"""
+    path = embed_path(db)
+    if not path.is_file():
+        return None
+    meta = _embed_meta(path)
+    if not meta:
+        return None
+    count, chars = conn.execute(
+        "SELECT COUNT(*), COALESCE(SUM(LENGTH(text)), 0) FROM chunks"
+    ).fetchone()
+    if (meta.get("count"), meta.get("chars")) != (count, chars):
+        print("嵌入缓存与索引不一致：先跑 kb_index.py embed <db> --force", file=sys.stderr)
+        return None
+    vectors: dict[int, list[float]] = {}
+    with path.open(encoding="utf-8") as fh:
+        next(fh, None)
+        for line in fh:
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+                vectors[int(item["id"])] = [float(x) for x in item["vec"]]
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                continue
+    return (vectors, meta) if vectors else None
 
 
 def split_markdown(text: str) -> list[tuple[str, str]]:
@@ -316,11 +458,53 @@ def vector_rows(conn, query: str, top: int, kind: str | None = None):
     return rows[:top]
 
 
-def search_rows(conn, query: str, top: int, kind: str | None = None, mode: str = "hybrid"):
+def semantic_rows(conn, db: Path, query: str, top: int, kind: str | None = None):
+    """余弦检索嵌入缓存；缺缓存或后端时返回 None，由调用方显式降级。"""
+    loaded = load_embeddings(db, conn)
+    if loaded is None:
+        return None
+    vectors, meta = loaded
+    try:
+        query_vectors, _name = _invoke_embedding([query])
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        return None
+    query_vector = query_vectors[0]
+    if meta.get("dim") and len(query_vector) != meta["dim"]:
+        print("嵌入维度与缓存不一致：换模型后先跑 kb_index.py embed <db> --force", file=sys.stderr)
+        return None
+
+    sql = "SELECT c.id, d.path, c.heading, c.kind, c.text FROM chunks c JOIN docs d ON d.id = c.doc_id"
+    params: list = []
+    if kind:
+        sql += " WHERE c.kind = ?"
+        params.append(kind)
+    rows = []
+    for chunk_id, path, heading, chunk_type, text in conn.execute(sql, params):
+        vector = vectors.get(chunk_id)
+        if not vector or len(vector) != len(query_vector):
+            continue
+        score = _vec_cosine(query_vector, vector)
+        if score > 0:
+            rows.append((chunk_id, path, heading, chunk_type, text[:200], score))
+    rows.sort(key=lambda item: -item[5])
+    return rows[:top]
+
+
+def search_rows(
+    conn,
+    query: str,
+    top: int,
+    kind: str | None = None,
+    mode: str = "hybrid",
+    db: Path | None = None,
+):
     if mode == "bm25":
         return bm25_rows(conn, query, top, kind)
     if mode == "vector":
         return vector_rows(conn, query, top, kind)
+    if mode == "semantic":
+        return semantic_rows(conn, db, query, top, kind) if db else None
 
     pool = max(top * 4, 20)
     fused: dict[int, list] = {}
@@ -329,6 +513,10 @@ def search_rows(conn, query: str, top: int, kind: str | None = None, mode: str =
     for rank, row in enumerate(vector_rows(conn, query, pool, kind), 1):
         entry = fused.setdefault(row[0], [row, 0.0])
         entry[1] += 1.0 / (60 + rank)
+    if db is not None and embed_path(db).is_file():
+        for rank, row in enumerate(semantic_rows(conn, db, query, pool, kind) or [], 1):
+            entry = fused.setdefault(row[0], [row, 0.0])
+            entry[1] += 1.0 / (60 + rank)
     ranked = sorted(fused.values(), key=lambda item: -item[1])[:top]
     return [
         (row[0], row[1], row[2], row[3], row[4], round(score, 4))
@@ -362,10 +550,17 @@ def search(db: Path, query: str, top: int, kind: str | None = None, mode: str = 
         return 2
     conn = open_index(db)
     try:
-        rows = search_rows(conn, query, top, kind, mode)
+        rows = search_rows(conn, query, top, kind, mode, db)
     finally:
         conn.close()
 
+    if rows is None:
+        print(
+            "语义检索不可用：先跑 kb_index.py embed <db>，并配置 STUDY_COACH_EMBED_CMD "
+            "或安装 sentence-transformers",
+            file=sys.stderr,
+        )
+        return 3
     if not rows:
         print("no match")
         return 1
@@ -413,7 +608,10 @@ def evaluate(
     reciprocal = 0.0
     try:
         for query, expect in queries:
-            rows = search_rows(conn, query, top, kind, mode)
+            rows = search_rows(conn, query, top, kind, mode, db)
+            if rows is None:
+                print("语义检索不可用：先跑 kb_index.py embed <db> 并配置嵌入后端", file=sys.stderr)
+                return 3
             rank = None
             for index, row in enumerate(rows, 1):
                 where = f"{row[1]} › {row[2] or ''}".lower()
@@ -467,7 +665,13 @@ def main() -> int:
     p_search.add_argument("query")
     p_search.add_argument("--top", type=int, default=5)
     p_search.add_argument("--kind", choices=CHUNK_KINDS, help="只看某一类切块")
-    p_search.add_argument("--mode", choices=("hybrid", "bm25", "vector"), default="hybrid")
+    p_search.add_argument(
+        "--mode", choices=("hybrid", "bm25", "vector", "semantic"), default="hybrid"
+    )
+
+    p_embed = sub.add_parser("embed", help="build the semantic embedding cache")
+    p_embed.add_argument("db")
+    p_embed.add_argument("--force", action="store_true", help="忽略缓存，全量重算")
 
     p_stats = sub.add_parser("stats", help="show index size")
     p_stats.add_argument("db")
@@ -477,12 +681,16 @@ def main() -> int:
     p_eval.add_argument("queries")
     p_eval.add_argument("--top", type=int, default=5)
     p_eval.add_argument("--kind", choices=CHUNK_KINDS)
-    p_eval.add_argument("--mode", choices=("hybrid", "bm25", "vector"), default="hybrid")
+    p_eval.add_argument(
+        "--mode", choices=("hybrid", "bm25", "vector", "semantic"), default="hybrid"
+    )
 
     args = parser.parse_args()
     if args.cmd == "build":
         build(Path(args.kb_dir), Path(args.db))
         return 0
+    if args.cmd == "embed":
+        return build_embeddings(Path(args.db), args.force)
     if args.cmd == "search":
         return search(Path(args.db), args.query, max(1, args.top), args.kind, args.mode)
     if args.cmd == "eval":

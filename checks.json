@@ -39,7 +39,7 @@
     {
       "id": "index_roundtrip",
       "level": "error",
-      "desc": "kb_index.py 能自动创建索引父目录、建 FTS5 索引、检索中文子串并按四类过滤；带引号的查询不崩，kind 无命中退出 1"
+      "desc": "kb_index.py 能自动创建索引父目录、建 FTS5 索引、检索中文子串并按四类过滤；带引号的查询不崩，kind 无命中退出 1；可选语义检索用假嵌入后端验证 embed 缓存、semantic 模式与 hybrid 第三路融合，缺缓存退出 3"
     },
     {
       "id": "retrieval_eval",
@@ -109,7 +109,7 @@
     {
       "id": "explain_lint",
       "level": "error",
-      "desc": "explain_lint.py 校验讲题稿七段、追问稿三层与多解稿：好样例 PASS，缺易错点/视角/来源/过短结论退出 1，只有核心段时判讲题稿而不是含糊的 both"
+      "desc": "explain_lint.py 校验讲题稿七段、追问稿三层与多解稿：好样例 PASS（含文科追问稿的证据核对表），缺易错点/视角/来源/过短结论退出 1，只有核心段时判讲题稿而不是含糊的 both"
     },
     {
       "id": "solution_research",

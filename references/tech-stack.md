@@ -29,7 +29,7 @@ Windows 提示：脚本读写文件固定 UTF-8；若控制台或管道里的中
 | 拍照/手写 | 多模态模型直接读图，返回结构化 JSON | 少一条 OCR 管线，题号与公式一起识别 | 识别率持续低于 80% 且量大 → 本地 Qwen3-VL |
 | 公式 | `step_check.py` 默认按 Python 语法验算；模型输出 LaTeX 时先转写，或装 `antlr4-python3-runtime` 后用 `--latex` | 解析失败会报原始错误并退出，不静默错 | pix2tex 仅在纯公式截图批处理时考虑 |
 | 索引 | `scripts/kb_index.py`：SQLite FTS5 `tokenize='trigram'` + BM25 | 零依赖、可重建、中文子串可查（BM25 需 ≥3 字；短查询走 vector/hybrid） | 仍不建第二份向量库 |
-| 向量检索 | 字符 bigram 余弦（纯 Python，随索引现算） + RRF 融合，默认 `--mode hybrid` | 不引依赖、不建第二份真相；短查询与同义改写由向量兜底 | Chroma 仅在资料 > 500 页且 bigram 明显不够时评估 |
+| 向量检索 | 字符 bigram 余弦（纯 Python，随索引现算） + RRF 融合，默认 `--mode hybrid` | 不引依赖、不建第二份真相；短查询与同义改写由向量兜底 | 需要真正语义时跑 `kb_index.py embed`，接 `STUDY_COACH_EMBED_CMD` 或 `sentence-transformers`；缓存缺失就退回两路 |
 | 符号校验 | `scripts/step_check.py`：逐步验等价 + 特殊值反例（SymPy） | 能证伪，不能证真；结论按"未发现矛盾"表述 | 不升级 |
 | 复习调度 | `scripts/review_schedule.py`：FSRS v6 回放 `reviews.jsonl`，字段仍是 `rating/interval_days/due` | 成熟算法，状态可从历史重建，不存黑箱 | 无 `fsrs` 时降级四档阶梯（1/3/7/16，连对 35 天） |
 | 掌握度 | 证据计数四级（L0–L3），样本 <5 只报"证据不足" | 单用户样本估不出概率；规则可解释、可复核 | 不升级为 BKT/深度追踪 |
@@ -76,7 +76,7 @@ Windows 提示：脚本读写文件固定 UTF-8；若控制台或管道里的中
 
 一次只换一层，换之前记录基线，换之后用同一批题对比：
 
-1. **bigram 向量 → 外部 embedding**：连续 10 次检索中 ≥3 次"该找到但没找到"，且确认不是关键词写错；先查 `evals/retrieval.jsonl` 是否退化。
+1. **bigram 向量 → 外部 embedding**：连续 10 次检索中 ≥3 次"该找到但没找到"，且确认不是关键词写错；先查 `evals/retrieval.jsonl` 是否退化，再跑 `embed` 用同一批 query 对比 hit@5。
 2. **FSRS 参数复核**：到期卡积压 > 50，或同一张卡在 7 天内反复遗忘；先查 rating 是否虚高、`step_scores` 是否按最弱一步记，再考虑调参。
 3. **fitz → MinerU**：解析后公式/表格缺失导致题目不可用，占比 > 20%。
 4. **NetworkX 启用**：知识点条目 > 60，或出现"讲第 7 章时反复回头补第 3 章"。

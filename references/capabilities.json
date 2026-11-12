@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-11-11",
+  "updated": "2026-11-12",
   "note": "能力契约：每项能力的输入、输出、失败态与入口。entry/reference 指向的文件必须存在，由 run_checks.py 的 capabilities 检查强制。",
   "capabilities": [
     {
@@ -224,16 +224,20 @@
     },
     {
       "id": "retrieval",
-      "name": "混合检索（BM25 + bigram 向量 + RRF）",
+      "name": "检索（BM25 + bigram + 可选语义嵌入）",
       "entry": "scripts/kb_index.py",
       "reference": "references/research.md",
-      "inputs": ["Markdown 学习库", "查询串（中文/公式）", "kind 过滤"],
-      "outputs": ["按相关度排序的片段与路径", "hit@k / MRR 评估"],
+      "inputs": ["Markdown 学习库", "查询串（中文/公式）", "kind 过滤",
+                 "可选：STUDY_COACH_EMBED_CMD 或 sentence-transformers"],
+      "outputs": ["按相关度排序的片段与路径", "hit@k / MRR 评估",
+                  "embeddings.jsonl 语义缓存（embed 子命令）"],
       "failure_modes": [
         "空库 → 返回 no match，转教材原文检索",
         "BM25 无命中 → 降级 vector，再降级关键词",
         "公式写法差异 → normalize_math 归一后再查",
-        "索引损坏 → 删除 .index 重建，不改 Markdown"
+        "索引损坏 → 删除 .index 重建，不改 Markdown",
+        "semantic 缺嵌入后端或缓存 → 退出 3 并回退 hybrid 两路字面检索，不假装命中",
+        "嵌入缓存与索引不一致 → 要求 embed --force 重建"
       ]
     },
     {
@@ -309,7 +313,7 @@
       "failure_modes": [
         "讲题稿缺七段之一 → 退出 1，不算成稿",
         "易错点少于 3 条或验算无表格/特殊值 → 退出 1",
-        "追问稿少于两个视角或缺数值验证表 → 退出 1",
+        "追问稿少于两个视角或缺验证表（数值/特殊值，或文科证据与评分点）→ 退出 1",
         "多解稿缺常规解法/对比表/验算/来源 → 退出 1",
         "文件不可读 → 退出 2",
         "出现「显然/易得」→ 仅警告，不判失败"
