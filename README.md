@@ -121,7 +121,7 @@ Brave → Yahoo → Bing 顺序回退，`status=ok` 即停；结果带标题与�
 ### 5. 知识库、检索与报告
 
 - 三平面存储：`notes/` 叙述层、`records/` 记录层、`views/` 可重建派生层。`records/*.jsonl` 以追加为主；卡片 `status`、错题 `count/status`、复习 `due` 这类状态字段允许原地更新，历史仍以 `reviews.jsonl` 回放为准。
-- 混合检索：SQLite FTS5（BM25）+ 字符 bigram 余弦 + RRF，可降级到 `bm25` 或 `vector`。默认两条字面分支，不依赖任何模型；`kb_index.py embed` 会按 `STUDY_COACH_EMBED_CMD` 或已安装的 `sentence-transformers` 生成 `embeddings.jsonl`，之后 `--mode semantic` 和 hybrid 的第三路语义分支才启用。缓存绑定切块 ID/标题/正文的 SHA-256 和模型身份（外部命令用 `STUDY_COACH_EMBED_NAME` 声明），等长改写、只改标题或同维换模型都会失效重建。显式 `--mode semantic` 缺后端、缓存或身份不符时退出 3；hybrid 只在缓存可用时加第三路，否则保持两路并提示重建。
+- 混合检索：SQLite FTS5（BM25）+ 字符 bigram 余弦 + RRF，可降级到 `bm25` 或 `vector`。默认两条字面分支，不依赖任何模型；`kb_index.py embed` 会按 `STUDY_COACH_EMBED_CMD` 或已安装的 `sentence-transformers` 生成 `embeddings.jsonl`，之后 `--mode semantic` 和 hybrid 的第三路语义分支才启用。缓存绑定切块 ID/标题/正文的 SHA-256 和模型身份（外部命令用 `STUDY_COACH_EMBED_NAME` 声明），等长改写、只改标题或同维换模型都会失效重建；读取时还会校验向量 ID 集合、条数、维度与数值有效性，写盘先落临时文件再原子替换。显式 `--mode semantic` 缺后端、缓存、身份或完整性不符时退出 3；hybrid 只在缓存可用时加第三路，否则保持两路并提示重建。
 - 题型卡片、易错点汇总、学情快照、双链反查、高频困惑点统计。
 - 结构地图：`structure_map.py` 把知识地图按必掌握/高频/了解重排，只画前置依赖，单列未知区域；成环与 `--strict` 门槛可判失败。
 - 一页速查表：`cheatsheet.py` 只收公式+条件、易混对照、识别信号、陷阱清单，输出 A4 黑白打印 HTML；缺易混与陷阱直接判不合格。
@@ -162,9 +162,9 @@ pip install sympy           # 步骤等价与特殊值验算
 仓库带 `package.json` 与零依赖安装器，只做本地 / Release 分发，不发布 npm registry：
 
 ```bash
-npm pack                                    # 产出 study-coach-5.5.1.tgz
-npx ./study-coach-5.5.1.tgz install --dest ~/.trae-cn/skills/study-coach
-npx ./study-coach-5.5.1.tgz doctor --dest ~/.trae-cn/skills/study-coach
+npm pack                                    # 产出 study-coach-5.5.2.tgz
+npx ./study-coach-5.5.2.tgz install --dest ~/.trae-cn/skills/study-coach
+npx ./study-coach-5.5.2.tgz doctor --dest ~/.trae-cn/skills/study-coach
 ```
 
 `install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 35 项验收，所以 Python 3.11+（推荐 3.12 / 3.13）是硬要求，低于 3.11 会直接给出提示并以 2 退出，npm 只负责搬文件。

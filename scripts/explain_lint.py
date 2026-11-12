@@ -111,6 +111,23 @@ def table_rows(text: str) -> int:
     return len(re.findall(r"^\s*\|.*\|\s*$", text, re.M))
 
 
+def table_data_rows(text: str) -> int:
+    """表格数据行数：跳过表头与分隔行，只数真正的内容行。"""
+    count = 0
+    in_body = False
+    for line in text.splitlines():
+        if not re.match(r"^\s*\|.*\|\s*$", line):
+            in_body = False
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if any(cells) and all(re.fullmatch(r":?-{2,}:?", cell) for cell in cells if cell):
+            in_body = True
+            continue
+        if in_body:
+            count += 1
+    return count
+
+
 def frontmatter_missing(text: str) -> list[str]:
     if not text.startswith("---"):
         return ["frontmatter"]
@@ -171,10 +188,18 @@ def check_followup(text: str, verify: str = "any") -> dict:
         missing.append("至少两种视角")
 
     words = verify_head_words(verify)
-    verify_head = any(any(word in t for word in words) for _, t in items)
+    verify_titles = [title for _, title in items
+                     if any(word in title for word in words)]
+    stats["验证段数"] = len(verify_titles)
     stats["表格行数"] = table_rows(text)
-    if not (verify_head and stats["表格行数"] >= 1):
+    stats["验证段数据行"] = max(
+        (table_data_rows(section_body(text, (title,))) for title in verify_titles),
+        default=0,
+    )
+    if not verify_titles:
         missing.append("验证（标题 + 表格）")
+    elif stats["验证段数据行"] < 1:
+        missing.append("验证段缺表格数据行")
     if stats["表格行数"] < 1:
         missing.append("对比表")
 

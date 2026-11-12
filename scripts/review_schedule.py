@@ -122,6 +122,26 @@ def numeric_id(card_id: str) -> int:
     return sum(ord(ch) for ch in card_id)
 
 
+def review_order(row: dict) -> tuple[datetime, int, str]:
+    """按 UTC 时刻排序，同一时刻再按 REV 编号与原始 ID。
+
+    直接比较时间字符串会在混合偏移时倒退（09:00+08:00 早于 02:00+00:00，
+    但字符串更大），所以先解析并统一到 UTC；无法解析的排到最后交给回放告警。
+    """
+    when = review_time(row.get("ts"))
+    if when is None:
+        when = datetime.max.replace(tzinfo=timezone.utc)
+    else:
+        when = when.astimezone(timezone.utc)
+    match = REV_ID.match(str(row.get("id") or ""))
+    return (when, int(match.group(1)) if match else 0, str(row.get("id") or ""))
+
+
+def ordered(rows: list[dict]) -> list[dict]:
+    """两条回放路径（FSRS 与四档阶梯）共用同一个排序入口。"""
+    return sorted(rows, key=review_order)
+
+
 def ladder_interval(ratings: list[int]) -> int:
     if len(ratings) >= 2 and ratings[-1] >= 3 and ratings[-2] >= 3:
         return LADDER_LONG
@@ -141,7 +161,7 @@ def replay_fsrs(history: list[dict], scheduler, warnings: list[str]) -> dict:
 
     card = Card(card_id=None)
     used = 0
-    for row in sorted(history, key=lambda r: (str(r.get("ts") or ""), str(r.get("id") or ""))):
+    for row in ordered(history):
         try:
             rating = int(row.get("rating"))
         except (TypeError, ValueError):
@@ -269,8 +289,7 @@ def main() -> int:
     cards_out: list[dict] = []
     states: dict[str, dict] = {}
     for card_id in selected:
-        history = sorted(by_card.get(card_id, []), key=lambda r: (
-            str(r.get("ts") or ""), str(r.get("id") or "")))  # 协议要求按 ts 顺序重建状态
+        history = ordered(by_card.get(card_id, []))  # 协议要求按真实时刻顺序重建状态
         if card_id not in known:
             warnings.append(f"{card_id} 不在 cards.jsonl 中，按新卡排期")
         if engine == "fsrs":

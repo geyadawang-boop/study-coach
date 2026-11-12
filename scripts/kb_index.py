@@ -227,6 +227,34 @@ def _invoke_embedding(texts: list[str]) -> tuple[list[list[float]], str]:
     return cleaned, _embedding_identity()
 
 
+def _read_embeddings(path: Path, meta: dict,
+                     expected_ids: set[int]) -> dict[int, list[float]] | None:
+    """读取并校验缓存完整性：ID 集合、条数、维度与数值有效性都要对得上。"""
+    dim = meta.get("dim")
+    if not isinstance(dim, int) or dim <= 0:
+        return None
+    if meta.get("count") != len(expected_ids):
+        return None
+    vectors: dict[int, list[float]] = {}
+    try:
+        with path.open(encoding="utf-8") as fh:
+            next(fh, None)
+            for line in fh:
+                if not line.strip():
+                    continue
+                item = json.loads(line)
+                chunk_id = int(item["id"])
+                vector = [float(x) for x in item["vec"]]
+                if len(vector) != dim or chunk_id in vectors:
+                    return None
+                if not all(math.isfinite(x) for x in vector):
+                    return None
+                vectors[chunk_id] = vector
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return None
+    return vectors if set(vectors) == expected_ids else None
+
+
 def build_embeddings(db: Path, force: bool = False) -> int:
     conn = open_index(db)
     try:
@@ -244,12 +272,15 @@ def build_embeddings(db: Path, force: bool = False) -> int:
 
     path = embed_path(db)
     identity = _embedding_identity()
+    chunk_ids = {int(chunk_id) for chunk_id, _, _ in rows}
     if path.is_file() and not force:
         meta = _embed_meta(path)
         if (meta and meta.get("sha256") == fingerprint
                 and meta.get("model") == identity):
-            print(f"embeddings up to date: {path} chunks={count} model={identity}")
-            return 0
+            if _read_embeddings(path, meta, chunk_ids) is not None:
+                print(f"embeddings up to date: {path} chunks={count} model={identity}")
+                return 0
+            print("嵌入缓存不完整：重建", file=sys.stderr)
 
     texts = [f"{heading}\n{text}" if heading else text for _, heading, text in rows]
     try:
@@ -258,20 +289,25 @@ def build_embeddings(db: Path, force: bool = False) -> int:
         print(str(exc), file=sys.stderr)
         return 3
 
-    with path.open("w", encoding="utf-8") as fh:
-        fh.write(json.dumps(
-            {"model": name, "sha256": fingerprint, "dim": len(vectors[0]),
-             "count": count, "chars": chars},
-            ensure_ascii=False,
-        ) + "\n")
-        for (chunk_id, _, _), vector in zip(rows, vectors):
-            fh.write(json.dumps({"id": chunk_id, "vec": vector}, ensure_ascii=False) + "\n")
+    tmp = path.with_name(f"{path.name}.tmp")
+    try:
+        with tmp.open("w", encoding="utf-8") as fh:
+            fh.write(json.dumps(
+                {"model": name, "sha256": fingerprint, "dim": len(vectors[0]),
+                 "count": count, "chars": chars},
+                ensure_ascii=False,
+            ) + "\n")
+            for (chunk_id, _, _), vector in zip(rows, vectors):
+                fh.write(json.dumps({"id": chunk_id, "vec": vector}, ensure_ascii=False) + "\n")
+        os.replace(tmp, path)  # 先写临时文件再原子替换，避免半截缓存被当成可用
+    finally:
+        tmp.unlink(missing_ok=True)
     print(f"embedded={count} dim={len(vectors[0])} model={name} file={path}")
     return 0
 
 
 def load_embeddings(db: Path, conn) -> tuple[dict[int, list[float]], dict] | None:
-    """读缓存；切块内容或模型身份与当前不一致就要求重建。"""
+    """读缓存；内容哈希、模型身份或文件完整性不符都要求重建。"""
     path = embed_path(db)
     if not path.is_file():
         return None
@@ -284,18 +320,12 @@ def load_embeddings(db: Path, conn) -> tuple[dict[int, list[float]], dict] | Non
     if meta.get("model") != _embedding_identity():
         print("嵌入模型与缓存不一致：换模型后先跑 kb_index.py embed <db> --force", file=sys.stderr)
         return None
-    vectors: dict[int, list[float]] = {}
-    with path.open(encoding="utf-8") as fh:
-        next(fh, None)
-        for line in fh:
-            if not line.strip():
-                continue
-            try:
-                item = json.loads(line)
-                vectors[int(item["id"])] = [float(x) for x in item["vec"]]
-            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
-                continue
-    return (vectors, meta) if vectors else None
+    expected = {int(row[0]) for row in conn.execute("SELECT id FROM chunks")}
+    vectors = _read_embeddings(path, meta, expected)
+    if vectors is None:
+        print("嵌入缓存不完整或已损坏：先跑 kb_index.py embed <db> --force", file=sys.stderr)
+        return None
+    return vectors, meta
 
 
 def split_markdown(text: str) -> list[tuple[str, str]]:

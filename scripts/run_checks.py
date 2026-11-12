@@ -445,6 +445,31 @@ def check_index_roundtrip(root: Path) -> list[dict]:
                 "error",
                 f"换模型后普通 embed 未重建：{reembed.stdout.strip() or reembed.stderr.strip()}",
             ))
+
+        # 缓存完整性：元数据声明 6 条、文件只剩 5 条时必须拒绝，
+        # 普通 embed 也不能因为 meta 对得上就报 up to date。
+        cache = Path(tmp) / "embeddings.jsonl"
+        lines = cache.read_text(encoding="utf-8").splitlines()
+        cache.write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
+        broken = subprocess.run(
+            [sys.executable, str(script), "search", str(db), "未定式", "--top", "2",
+             "--mode", "semantic"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if broken.returncode != 3:
+            out.append(finding(
+                "error",
+                f"不完整嵌入缓存 semantic 未退出 3：{broken.returncode} {broken.stdout.strip()}",
+            ))
+        repaired = subprocess.run(
+            [sys.executable, str(script), "embed", str(db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if repaired.returncode != 0 or "embedded=" not in repaired.stdout:
+            out.append(finding(
+                "error",
+                f"不完整缓存普通 embed 未重建：{repaired.stdout.strip() or repaired.stderr.strip()}",
+            ))
     return out
 
 
@@ -542,6 +567,34 @@ def check_explain_lint(root: Path) -> list[dict]:
             out.append(finding(
                 "error", f"{label}未报告「{needle}」：{data.get('missing')}",
             ))
+
+    # 验证段必须自带表格：把验证段清空、只保留其他章节的表格，numeric 策略应失败。
+    follow = (root / "evals/fixtures/explain-followup-good.md").read_text(encoding="utf-8")
+    emptied = re.sub(r"(##\s*数值验证[^\n]*\n).*?(?=##\s*对比表)", r"\1\n", follow, flags=re.S)
+    if emptied == follow:
+        out.append(finding("error", "验证段空表负样例构造失败：模式未命中"))
+    else:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "empty-verify.md"
+            path.write_text(emptied, encoding="utf-8")
+            proc = subprocess.run(
+                [sys.executable, str(script), str(path), "--level", "followup",
+                 "--verify", "numeric", "--json"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+        if proc.returncode != 1:
+            out.append(finding(
+                "error", f"验证段为空返回 {proc.returncode}（期望 1）：{proc.stdout.strip()}",
+            ))
+        else:
+            try:
+                data = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                data = {}
+            if not any("验证段" in item for item in data.get("missing") or []):
+                out.append(finding(
+                    "error", f"验证段为空未被报告：{data.get('missing')}",
+                ))
 
     policy_negative = [
         ("文科稿按数值策略应失败", "evals/fixtures/explain-followup-humanities-good.md",
@@ -2283,6 +2336,42 @@ def check_review_schedule(root: Path) -> list[dict]:
                 out.append(finding(
                     "error", f"默认复习时间不是当前时间：{lines[-1].get('ts')}",
                 ))
+
+        # 混合时区必须按真实时刻回放：09:00+08:00（01:00Z）先于 02:00+00:00，
+        # 字符串排序会颠倒，导致阶梯最后评级从 1 变成 3、到期日错成 7 天后。
+        tz_kb = Path(tmp) / "kb_tz"
+        (tz_kb / "records").mkdir(parents=True)
+        (tz_kb / "records/cards.jsonl").write_text(
+            '{"schema":1,"id":"CARD-0001","ts":"2026-11-01","type":"定理","title":"tz",'
+            '"signal":["s"],"method":"m","steps":["a"],"boundary":"b","evidence":[],"status":"verified"}\n',
+            encoding="utf-8",
+        )
+        (tz_kb / "records/reviews.jsonl").write_text(
+            '{"schema":1,"id":"REV-0001","card_id":"CARD-0001","ts":"2026-11-08T09:00:00+08:00",'
+            '"rating":3,"interval_days":1,"due":"2026-11-09"}\n'
+            '{"schema":1,"id":"REV-0002","card_id":"CARD-0001","ts":"2026-11-08T02:00:00+00:00",'
+            '"rating":1,"interval_days":1,"due":"2026-11-09"}\n',
+            encoding="utf-8",
+        )
+        proc = subprocess.run(
+            [sys.executable, str(script), "--kb", str(tz_kb), "--at", "2026-11-08T03:00:00+00:00",
+             "--engine", "ladder", "--json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if proc.returncode != 0:
+            out.append(finding("error", f"混合时区回放失败：{proc.stderr.strip()}"))
+        else:
+            row = (json.loads(proc.stdout).get("cards") or [{}])[0]
+            if row.get("reviews") != 2 or row.get("interval_days") != 1:
+                out.append(finding(
+                    "error", f"混合时区回放顺序错误：{row}",
+                ))
+            if row.get("last_review") != "2026-11-08T02:00:00+00:00":
+                out.append(finding(
+                    "error", f"混合时区未取真实最后一跳：{row.get('last_review')}",
+                ))
+            if row.get("due_date") != "2026-11-09":
+                out.append(finding("error", f"混合时区到期日错误：{row.get('due_date')}"))
 
         proc = subprocess.run(
             [sys.executable, str(script), "--kb", str(kb), "--grade", "CARD-9999:2", "--record"],

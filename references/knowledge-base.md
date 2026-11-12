@@ -208,7 +208,7 @@ python scripts/export_book.py --kb 学习库 --concept 极限 --format html
 
 检索结果按路径回读原文，不把片段当引用。
 
-语义检索不是默认能力：`embed` 优先读 `STUDY_COACH_EMBED_CMD`（stdin 收 JSON 字符串数组、stdout 回 JSON 向量数组），其次用已安装的 `sentence-transformers`，两者都没有就退出 3。缓存 `embeddings.jsonl` 与 `index.db` 同目录，绑定切块 ID/标题/正文的 SHA-256 与嵌入模型身份：内容等长改写、只改标题或换模型都会让旧缓存失效，普通 `embed` 自动重算，`--mode semantic` 则明确要求重建；外部命令用 `STUDY_COACH_EMBED_NAME` 声明模型名（不声明则取命令哈希，换命令即换代），`sentence-transformers` 用 `STUDY_COACH_EMBED_MODEL`。没有缓存时默认 hybrid 仍是 BM25 + 字符 bigram 两路，行为不变。
+语义检索不是默认能力：`embed` 优先读 `STUDY_COACH_EMBED_CMD`（stdin 收 JSON 字符串数组、stdout 回 JSON 向量数组），其次用已安装的 `sentence-transformers`，两者都没有就退出 3。缓存 `embeddings.jsonl` 与 `index.db` 同目录，绑定切块 ID/标题/正文的 SHA-256 与嵌入模型身份：内容等长改写、只改标题或换模型都会让旧缓存失效，普通 `embed` 自动重算，`--mode semantic` 则明确要求重建；读取时校验向量 ID 集合、条数、维度与数值有效性，不完整的缓存按损坏处理，写盘先写临时文件再原子替换。外部命令用 `STUDY_COACH_EMBED_NAME` 声明模型名（不声明则取命令哈希，换命令即换代），`sentence-transformers` 用 `STUDY_COACH_EMBED_MODEL`。没有缓存时默认 hybrid 仍是 BM25 + 字符 bigram 两路，行为不变。
 
 ## 双链反查
 
