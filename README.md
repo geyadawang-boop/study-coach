@@ -255,7 +255,7 @@ python scripts/route.py --eval evals/routing.jsonl
 # top1=53/54 (98%)  top3=54/54 (100%)
 ```
 
-未装 PyMuPDF / fsrs 时，相关检查会显式 SKIP，不会假装 PASS。CI 跑两个 job：`checks` 只用标准库覆盖 3.11–3.13，`full-deps` 装齐 fsrs / sympy / pymupdf 后跑同一批检查，避免可选依赖分支长期只走 SKIP。
+未装 PyMuPDF / fsrs 时，相关检查会显式 SKIP，不会假装 PASS。CI 跑两个 job：`checks` 只用标准库覆盖 3.11–3.13，`full-deps` 装齐 fsrs / sympy / pymupdf 后跑同一批检查，避免这三类分支长期只走 SKIP；OCR 检查仍需本机或 CI 另装 RapidOCR。
 
 当前基线：
 
@@ -292,7 +292,7 @@ python scripts/route.py --eval evals/routing.jsonl
 - 外部检索依赖网络，超时后显式降级，不会静默卡住。
 - 上下文只能浓缩、不能回收：长会话最终仍会被压缩，所以状态必须落到 `progress.md` 与 `records/`，不靠上下文记忆。
 - StackExchange 只作验算与反例来源，中文题干需先译成英文关键词；它不是考纲依据，也不做首选检索源。
-- PDF / OCR / SymPy 相关检查在依赖缺失时会 SKIP，不会假装通过；CI 的 `full-deps` job 负责把这些分支实际跑到。
+- PDF / OCR / SymPy 相关检查在依赖缺失时会 SKIP，不会假装通过；CI 的 `full-deps` job 覆盖 PDF 与 SymPy 分支，OCR 分支仍需 RapidOCR。
 - PyMuPDF 1.28 起 `import fitz` 会向 stdout 打弃用横幅；所有脚本统一走 `fitz_compat.py`，JSON 输出不会被污染。
 - Windows 控制台/管道中文乱码时先设 `$env:PYTHONUTF8="1"`；脚本读写文件已固定 UTF-8。
 
