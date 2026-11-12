@@ -162,9 +162,9 @@ pip install sympy           # 步骤等价与特殊值验算
 仓库带 `package.json` 与零依赖安装器，只做本地 / Release 分发，不发布 npm registry：
 
 ```bash
-npm pack                                    # 产出 study-coach-5.6.2.tgz
-npx ./study-coach-5.6.2.tgz install --dest ~/.trae-cn/skills/study-coach
-npx ./study-coach-5.6.2.tgz doctor --dest ~/.trae-cn/skills/study-coach
+npm pack                                    # 产出 study-coach-5.6.3.tgz
+npx ./study-coach-5.6.3.tgz install --dest ~/.trae-cn/skills/study-coach
+npx ./study-coach-5.6.3.tgz doctor --dest ~/.trae-cn/skills/study-coach
 ```
 
 `install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 36 项验收，所以 Python 3.11+（推荐 3.12 / 3.13）是硬要求，低于 3.11 会直接给出提示并以 2 退出，npm 只负责搬文件。

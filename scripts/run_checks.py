@@ -725,20 +725,38 @@ HISTORY_LOCATOR = re.compile(
 )
 
 
+def _history_field(text: str, labels: tuple[str, ...]) -> str:
+    """取「标签：值」中的值；没有该标签时返回空串。"""
+    for label in labels:
+        matched = re.search(rf"{re.escape(label)}[ \t]*[：:][ \t]*([^\n；;]*)", text)
+        if matched:
+            return matched.group(1).strip()
+    return ""
+
+
+def _history_value_ok(value: str) -> bool:
+    return bool(re.search(r"[0-9A-Za-z\u4e00-\u9fff]", value))
+
+
 def _history_source_issues(patterns_text: str, misconceptions_text: str) -> list[str]:
-    """历史包证据规则：待补必须显式标注，补齐必须可定位，权重必须带统计口径。"""
+    """历史包证据规则：待补必须显式标注，补齐必须可定位，权重必须带有效统计口径。"""
     issues: list[str] = []
     if re.search(r"\d+(?:\.\d+)?\s*%", patterns_text):
-        matched = re.search(r"(?ms)^##\s*高频考点分布[^\n]*\n(.*?)(?=^##\s|\Z)", patterns_text)
-        block = matched.group(1) if matched else patterns_text
-        missing = [f"{word}：" for word in ("考试体系", "样本量", "来源")
-                   if not re.search(rf"{word}\s*[：:]", block)]
-        if not re.search(r"(?:统计依据|统计方法|统计口径)\s*[：:]", block):
-            missing.append("统计依据：")
-        if not re.search(r"\d+\s*套", block):
-            missing.append("样本套数（N 套）")
-        if missing:
-            issues.append(f"exam-patterns.md 有数值权重但缺：{'、'.join(missing)}")
+        problems: list[str] = []
+        for label in ("考试体系", "来源"):
+            if not _history_value_ok(_history_field(patterns_text, (label,))):
+                problems.append(f"{label}为空")
+        if not _history_value_ok(
+                _history_field(patterns_text, ("统计依据", "统计方法", "统计口径"))):
+            problems.append("统计依据为空")
+        sample = _history_field(patterns_text, ("样本量",))
+        count = re.search(r"(\d+)\s*套", sample)
+        if not count:
+            problems.append("样本量缺少数值")
+        elif int(count.group(1)) < 3:
+            problems.append(f"样本量 {count.group(1)} 套少于 3 套")
+        if problems:
+            issues.append(f"exam-patterns.md 有数值权重但：{'、'.join(problems)}")
     else:
         for needle in ("默认不提供", "样本量", "来源"):
             if needle not in patterns_text:
@@ -768,26 +786,36 @@ def check_history_sources(root: Path) -> list[dict]:
     out = [finding("error", msg)
            for msg in _history_source_issues(base_patterns, base_misconceptions)]
 
-    # 自测四种状态：待补与补齐都应通过，泛指证据与无口径权重都应失败。
+    # 自测用独立固定样例，不依赖实际文档是否还留有「待补证据」占位符。
+    template = (
+        "## 高频考点分布\n\n"
+        "默认不提供无来源的数值权重；若要给出，至少 3 套真题，记录样本量与来源。\n"
+    )
+    pending = "\n".join(["- **证据**：[待补证据]"] * 6)
+    completed = "\n".join(
+        ["- **证据**：统编版《中外历史纲要（上）》第 45 页。"]
+        + ["- **证据**：[待补证据]"] * 5
+    )
+    vague = "\n".join(
+        ["- **证据**：教材相关章节。"] + ["- **证据**：[待补证据]"] * 5
+    )
+    sourced = (
+        template
+        + "\n考试体系：全国卷；样本量：3 套；来源：2018–2020 年真题；"
+        "统计依据：按题号与分值逐题统计。\n\n- 古代政治制度：15–20%\n"
+    )
     cases = [
-        ("待补状态", base_patterns, base_misconceptions, False),
-        ("补齐来源", base_patterns,
-         base_misconceptions.replace(
-             "- **证据**：[待补证据]", "- **证据**：统编版《中外历史纲要（上）》第 45 页。", 1),
-         False),
-        ("泛指证据", base_patterns,
-         base_misconceptions.replace(
-             "- **证据**：[待补证据]", "- **证据**：教材相关章节。", 1), True),
-        ("无来源权重", base_patterns.replace(
-            "## 高频考点分布\n", "## 高频考点分布\n\n- 古代政治制度：15–20%\n", 1),
-         base_misconceptions, True),
-        ("有来源权重", base_patterns.replace(
-            "## 高频考点分布\n",
-            "## 高频考点分布\n\n"
-            "考试体系：全国卷；样本量：3 套；来源：2018–2020 年真题；"
-            "统计依据：按题号与分值逐题统计。\n\n"
-            "- 古代政治制度：15–20%\n", 1),
-         base_misconceptions, False),
+        ("待补状态", template, pending, False),
+        ("补齐来源", template, completed, False),
+        ("泛指证据", template, vague, True),
+        ("无来源权重", template + "\n- 古代政治制度：15–20%\n", pending, True),
+        ("有来源权重", sourced, pending, False),
+        ("空字段权重",
+         template + "\n考试体系：；样本量：0 套；来源：；统计依据：\n\n"
+                    "- 古代政治制度：20%\n", pending, True),
+        ("样本不足",
+         template + "\n考试体系：全国卷；样本量：2 套；来源：某年真题；"
+                    "统计依据：按分值统计。\n\n- 古代政治制度：20%\n", pending, True),
     ]
     for label, pat, mis, should_fail in cases:
         if bool(_history_source_issues(pat, mis)) is not should_fail:
