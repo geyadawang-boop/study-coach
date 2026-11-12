@@ -719,27 +719,79 @@ def check_explain_lint(root: Path) -> list[dict]:
     return out
 
 
+HISTORY_LOCATOR = re.compile(
+    r"(第\s*\d+\s*页|[pP]\.?\s*\d+|卷\s*[0-9一二三四五六七八九十百千]+"
+    r"|第\s*[0-9一二三四五六七八九十百千]+\s*卷)"
+)
+
+
+def _history_source_issues(patterns_text: str, misconceptions_text: str) -> list[str]:
+    """历史包证据规则：待补必须显式标注，补齐必须可定位，权重必须带统计口径。"""
+    issues: list[str] = []
+    if re.search(r"\d+(?:\.\d+)?\s*%", patterns_text):
+        matched = re.search(r"(?ms)^##\s*高频考点分布[^\n]*\n(.*?)(?=^##\s|\Z)", patterns_text)
+        block = matched.group(1) if matched else patterns_text
+        missing = [f"{word}：" for word in ("考试体系", "样本量", "来源")
+                   if not re.search(rf"{word}\s*[：:]", block)]
+        if not re.search(r"(?:统计依据|统计方法|统计口径)\s*[：:]", block):
+            missing.append("统计依据：")
+        if not re.search(r"\d+\s*套", block):
+            missing.append("样本套数（N 套）")
+        if missing:
+            issues.append(f"exam-patterns.md 有数值权重但缺：{'、'.join(missing)}")
+    else:
+        for needle in ("默认不提供", "样本量", "来源"):
+            if needle not in patterns_text:
+                issues.append(f"exam-patterns.md 未给权重，但缺「{needle}」的取证说明")
+
+    evidence = [line.strip() for line in misconceptions_text.splitlines()
+                if "**证据**" in line]
+    if len(evidence) < 6:
+        issues.append(f"misconceptions.md 证据条目只有 {len(evidence)} 条")
+    for line in evidence:
+        if "[待补证据]" in line:
+            continue
+        if "版" in line and HISTORY_LOCATOR.search(line):
+            continue
+        issues.append(f"misconceptions.md 证据既未标待补，也缺版本+页码/卷次：{line[:60]}")
+    return issues
+
+
 def check_history_sources(root: Path) -> list[dict]:
-    """历史包内容证据：默认不给无来源权重，泛指证据标为待补。"""
-    out: list[dict] = []
+    """历史包内容证据：待补要显式标注，补齐后要可定位；权重必须带统计口径。"""
     patterns = root / "subjects/history/exam-patterns.md"
     misconceptions = root / "subjects/history/misconceptions.md"
     if not patterns.is_file() or not misconceptions.is_file():
         return [finding("error", "缺 subjects/history/exam-patterns.md 或 misconceptions.md")]
-    text = patterns.read_text(encoding="utf-8", errors="replace")
-    weights = re.findall(r"\d+(?:\.\d+)?\s*%", text)
-    if weights:
-        out.append(finding("error", f"exam-patterns.md 含无来源数值权重：{weights}"))
-    for needle in ("默认不提供", "至少 3 套", "样本量", "来源"):
-        if needle not in text:
-            out.append(finding("error", f"exam-patterns.md 缺「{needle}」的取证要求"))
-    lines = misconceptions.read_text(encoding="utf-8", errors="replace").splitlines()
-    evidence = [line.strip() for line in lines if "**证据**" in line]
-    if len(evidence) < 6:
-        out.append(finding("error", f"misconceptions.md 证据条目只有 {len(evidence)} 条"))
-    vague = [line for line in evidence if "[待补证据]" not in line]
-    if vague:
-        out.append(finding("error", f"misconceptions.md 有未标待补的证据：{vague[:2]}"))
+    base_patterns = patterns.read_text(encoding="utf-8", errors="replace")
+    base_misconceptions = misconceptions.read_text(encoding="utf-8", errors="replace")
+    out = [finding("error", msg)
+           for msg in _history_source_issues(base_patterns, base_misconceptions)]
+
+    # 自测四种状态：待补与补齐都应通过，泛指证据与无口径权重都应失败。
+    cases = [
+        ("待补状态", base_patterns, base_misconceptions, False),
+        ("补齐来源", base_patterns,
+         base_misconceptions.replace(
+             "- **证据**：[待补证据]", "- **证据**：统编版《中外历史纲要（上）》第 45 页。", 1),
+         False),
+        ("泛指证据", base_patterns,
+         base_misconceptions.replace(
+             "- **证据**：[待补证据]", "- **证据**：教材相关章节。", 1), True),
+        ("无来源权重", base_patterns.replace(
+            "## 高频考点分布\n", "## 高频考点分布\n\n- 古代政治制度：15–20%\n", 1),
+         base_misconceptions, True),
+        ("有来源权重", base_patterns.replace(
+            "## 高频考点分布\n",
+            "## 高频考点分布\n\n"
+            "考试体系：全国卷；样本量：3 套；来源：2018–2020 年真题；"
+            "统计依据：按题号与分值逐题统计。\n\n"
+            "- 古代政治制度：15–20%\n", 1),
+         base_misconceptions, False),
+    ]
+    for label, pat, mis, should_fail in cases:
+        if bool(_history_source_issues(pat, mis)) is not should_fail:
+            out.append(finding("error", f"history_sources 自测「{label}」判定错误"))
     return out
 
 

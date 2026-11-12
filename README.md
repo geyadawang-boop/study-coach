@@ -162,9 +162,9 @@ pip install sympy           # 步骤等价与特殊值验算
 仓库带 `package.json` 与零依赖安装器，只做本地 / Release 分发，不发布 npm registry：
 
 ```bash
-npm pack                                    # 产出 study-coach-5.6.1.tgz
-npx ./study-coach-5.6.1.tgz install --dest ~/.trae-cn/skills/study-coach
-npx ./study-coach-5.6.1.tgz doctor --dest ~/.trae-cn/skills/study-coach
+npm pack                                    # 产出 study-coach-5.6.2.tgz
+npx ./study-coach-5.6.2.tgz install --dest ~/.trae-cn/skills/study-coach
+npx ./study-coach-5.6.2.tgz doctor --dest ~/.trae-cn/skills/study-coach
 ```
 
 `install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 36 项验收，所以 Python 3.11+（推荐 3.12 / 3.13）是硬要求，低于 3.11 会直接给出提示并以 2 退出，npm 只负责搬文件。
@@ -304,7 +304,7 @@ python scripts/route.py --eval evals/routing.jsonl
 ## 已知边界
 
 - `explain_lint.py` 只查结构下限，不评讲解质量；文风与类比是否贴切仍靠模型自评与用户反馈。
-- 第二个学科包 `subjects/history` 只是中国古代史与近代史的默认范围模板，用来证明验证策略能跨学科下沉，不是完整历史教材。考点分布不给无来源的百分比；误解库证据统一标 `[待补证据]`，补齐前只作定性提醒。
+- 第二个学科包 `subjects/history` 只是中国古代史与近代史的默认范围模板，用来证明验证策略能跨学科下沉，不是完整历史教材。误解库证据未补齐时标 `[待补证据]`，补齐后要求教材版本+页码或史料版本+卷次；考点分布默认不给百分比，给出时必须附考试体系、样本量、来源与统计依据。
 - 跨学科改写评测只有 16 条、语料 11 篇文档，不能当成教材级检索质量证明；真实嵌入模型需本机下载，CI 只跑字面基线。
 - OCR 与多栏切题的 bbox 需要模型复核，低置信内容标「待核」，不自动猜。
 - 路由 top1 为 98%：个别说法（如「只给范围没给大纲」）会先命中讲义入口，但 top3 能兜住。
