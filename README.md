@@ -86,7 +86,7 @@ flowchart LR
 一句话结论 → 至少两种视角 + 按学科包验证 → 记号/定义拆解
 ```
 
-写完跑 `scripts/explain_lint.py`：缺段、易错点少于 3 条、追问少于两个视角、没有验证表，都会退出 1。验证表按学科策略判定：`--subject calculus` 读学科包的 `verify: numeric`，要求数值/特殊值；文科用 `--verify evidence` 要求证据/评分点表。结构不合格不算成稿。
+写完跑 `scripts/explain_lint.py`：缺段、易错点少于 3 条、追问少于两个视角、没有验证表，都会退出 1。验证表按学科策略判定：`--subject calculus` 读学科包的 `verify: numeric`，要求数值/特殊值；`--subject history` 读 `verify: evidence`，要求史料或评分点证据；也可用 `--verify evidence` 直接指定。结构不合格不算成稿。
 
 用户要「更优解 / 一题多解 / 搜一下 B 站」时，先做一轮解法检索（本地库 → 教材 → StackExchange / arXiv → B 站 → 社区），再输出：
 
@@ -162,9 +162,9 @@ pip install sympy           # 步骤等价与特殊值验算
 仓库带 `package.json` 与零依赖安装器，只做本地 / Release 分发，不发布 npm registry：
 
 ```bash
-npm pack                                    # 产出 study-coach-5.5.2.tgz
-npx ./study-coach-5.5.2.tgz install --dest ~/.trae-cn/skills/study-coach
-npx ./study-coach-5.5.2.tgz doctor --dest ~/.trae-cn/skills/study-coach
+npm pack                                    # 产出 study-coach-5.6.0.tgz
+npx ./study-coach-5.6.0.tgz install --dest ~/.trae-cn/skills/study-coach
+npx ./study-coach-5.6.0.tgz doctor --dest ~/.trae-cn/skills/study-coach
 ```
 
 `install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 35 项验收，所以 Python 3.11+（推荐 3.12 / 3.13）是硬要求，低于 3.11 会直接给出提示并以 2 退出，npm 只负责搬文件。
@@ -234,8 +234,9 @@ study-coach/
 │   └── tech-stack.md        # 选型、依赖、升级触发条件
 ├── scripts/                 # 27 个可执行脚本
 ├── subjects/calculus/       # 学科插件：考纲、渲染、题型、误解库、术语、验证策略
+├── subjects/history/        # 文科插件：史料对应、时空定位、因果链、评分点（verify: evidence）
 ├── 知识库模板/              # 可直接复制的学习库骨架，含示例讲义与记录
-├── evals/                   # 27 条行为用例、29 条检索、54 条路由、20 个 fixture
+├── evals/                   # 27 条行为用例、29 条检索、16 条跨学科改写、54 条路由、20 个 fixture
 ├── npm/bin/study-coach.js   # 零依赖安装器：install / doctor
 └── agents/openai.yaml       # Agent 接口描述
 ```
@@ -266,8 +267,24 @@ python scripts/route.py --eval evals/routing.jsonl
 | 能力契约 | 31 项，entry/reference 全部指向真实文件 |
 | 行为评测 | 27 条 |
 | 检索评测 | 29 条真实问法，hybrid hit@5 全中 |
+| 跨学科改写 | 16 条（calculus + history），字面 hybrid hit@3 12/16，MRR 0.677 |
+| 真实语义检索 | `BAAI/bge-small-zh-v1.5`（512 维）hit@3 14/16，MRR 0.812 |
 | 路由回归 | top1 98%（53/54），top3 100% |
 | 模板学习库体检 | `errors=0 warnings=0 infos=0` |
+
+跨学科改写用 `subjects/calculus` + `subjects/history` 共 11 篇文档、63 个切块，问法全部是口语化改写而不是原文关键词。四组对比：
+
+| 模式 | hit@3 | MRR |
+| --- | --- | --- |
+| `bm25` | 7/16 | 0.438 |
+| `vector`（字符 bigram） | 12/16 | 0.677 |
+| `hybrid`（两路字面） | 12/16 | 0.677 |
+| `semantic`（真实嵌入） | 14/16 | 0.812 |
+| `hybrid` + 语义第三路 | 14/16 | 0.781 |
+
+两条未中：「考试只写答案不写过程会不会丢分」（目标 `calculus/render.md`，相关块排第 5）、「二重积分换坐标时多出来的那个因子是什么」（目标 `calculus/glossary.md`，相关块未进前 3）。用同一模型复测既有 29 条微积分问法：`semantic` 28/29、MRR 0.806，`hybrid` + 语义第三路 29/29、MRR 0.908，语义分支没有拖累原基线。
+
+这组数字的边界要说清：语料是学科包文档，不是整本教材；16 条改写集只能证明「语义路可用且优于纯字面」，不能替代教材级端到端评测。`run_checks.py` 只锁 12/16 的字面基线，真实模型评测需要本机下载模型，不进 CI。
 
 这些数字由脚本产出，不靠 README 自证；`run_checks.py` 会检查 `checks.json` 与实现是否一致。
 
@@ -287,6 +304,8 @@ python scripts/route.py --eval evals/routing.jsonl
 ## 已知边界
 
 - `explain_lint.py` 只查结构下限，不评讲解质量；文风与类比是否贴切仍靠模型自评与用户反馈。
+- 第二个学科包 `subjects/history` 只是中国古代史与近代史的默认范围模板，用来证明验证策略能跨学科下沉，不是完整历史教材。
+- 跨学科改写评测只有 16 条、语料 11 篇文档，不能当成教材级检索质量证明；真实嵌入模型需本机下载，CI 只跑字面基线。
 - OCR 与多栏切题的 bbox 需要模型复核，低置信内容标「待核」，不自动猜。
 - 路由 top1 为 98%：个别说法（如「只给范围没给大纲」）会先命中讲义入口，但 top3 能兜住。
 - 外部检索依赖网络，超时后显式降级，不会静默卡住。

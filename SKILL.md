@@ -142,7 +142,7 @@ description: "通用备考与学习教练，适用于任何有教材和考试的
 | 跨讲义/真题/知识库检索，按定理/步骤/例题/陷阱过滤，hit@k 评估；可选语义检索（`embed` + `--mode semantic`，缺后端退出 3） | `scripts/kb_index.py` |
 | 按考点或错题导出可打印习题册 | `scripts/export_book.py` |
 | 验算解答步骤（逐步等价 + 特殊值） | `scripts/step_check.py` |
-| 学科记号、公式渲染、题型术语、误解库 | `subjects/<学科>/`（当前有 `calculus/`：syllabus、render、exam-patterns、misconceptions、glossary） |
+| 学科记号、公式渲染、题型术语、误解库 | `subjects/<学科>/`（当前有 `calculus/` 与 `history/`：syllabus、render/exam-patterns、misconceptions、glossary） |
 | 该学科怎么验算/验证、多解怎么逐条核 | `subjects/<学科>/verification.md` |
 | 查询每个能力的输入/输出/失败态 | `references/capabilities.json` |
 | 需要固定输出格式与渲染检查 | `references/output-contract.md` |

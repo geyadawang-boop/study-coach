@@ -1,0 +1,16 @@
+{"query": "上下都趋近零的时候，为什么不能直接分别求导再相除", "expect": ["calculus/misconceptions.md"]}
+{"query": "把 x 换成别的字母后，积分两端的数要不要一起改", "expect": ["calculus/misconceptions.md"]}
+{"query": "图像有个尖角，那一点还能谈斜率吗", "expect": ["calculus/misconceptions.md"]}
+{"query": "加下去的数越来越接近零，总和一定收敛吗", "expect": ["calculus/misconceptions.md"]}
+{"query": "考试只写答案不写过程会不会丢分", "expect": ["calculus/render.md"]}
+{"query": "二重积分换坐标时多出来的那个因子是什么", "expect": ["calculus/glossary.md"]}
+{"query": "中值定理的证明题一般怎么构造辅助函数", "expect": ["calculus/exam-patterns.md", "calculus/syllabus.md"]}
+{"query": "国外微积分教材和国内讲法不一致，考试按哪个", "expect": ["calculus/glossary.md"]}
+{"query": "明朝替皇帝看奏章并提出处理意见的机构，能自己拍板吗", "expect": ["history/glossary.md", "history/misconceptions.md"]}
+{"query": "清朝雍正以后，皇帝把决定权收到自己手里的标志是什么", "expect": ["history/glossary.md"]}
+{"query": "近代中国是不是把国门完全关死了", "expect": ["history/misconceptions.md"]}
+{"query": "洋务运动学了西方技术，为什么没有改变社会性质", "expect": ["history/misconceptions.md"]}
+{"query": "辛亥革命到底结束了什么、又没结束什么", "expect": ["history/misconceptions.md", "history/glossary.md"]}
+{"query": "材料题怎么答才能拿到史料实证的分数", "expect": ["history/exam-patterns.md", "history/verification.md"]}
+{"query": "鸦片战争真正的原因是不是林则徐销毁鸦片", "expect": ["history/misconceptions.md"]}
+{"query": "一条鞭法为什么用银子交税", "expect": ["history/glossary.md"]}

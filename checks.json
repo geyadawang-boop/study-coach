@@ -44,7 +44,7 @@
     {
       "id": "retrieval_eval",
       "level": "error",
-      "desc": "用 subjects/calculus 真实资料与 evals/retrieval.jsonl 跑三种检索模式，hybrid hit@5 必须全中"
+      "desc": "用 subjects/calculus 真实资料与 evals/retrieval.jsonl 跑三种检索模式，hybrid hit@5 必须全中；再用 calculus + history 混合语料跑 evals/retrieval-paraphrase.jsonl 16 条跨学科改写，hybrid hit@3 不低于 12/16"
     },
     {
       "id": "intake_gate",
@@ -109,7 +109,7 @@
     {
       "id": "explain_lint",
       "level": "error",
-      "desc": "explain_lint.py 校验讲题稿七段、追问稿三层与多解稿：好样例 PASS（含文科追问稿的证据核对表），--subject 读学科包 verify 策略（calculus=numeric 拒绝证据标题，未知学科退出 2），追问稿只统计验证段内的表格数据行（其他章节有表格不能顶替），缺易错点/视角/来源/过短结论退出 1，只有核心段时判讲题稿而不是含糊的 both"
+      "desc": "explain_lint.py 校验讲题稿七段、追问稿三层与多解稿：好样例 PASS（含文科追问稿的证据核对表），--subject 读学科包 verify 策略（calculus=numeric 拒绝证据标题，history=evidence 接受证据核对表并拒绝数值标题，未知学科退出 2），追问稿只统计验证段内的表格数据行（其他章节有表格不能顶替），缺易错点/视角/来源/过短结论退出 1，只有核心段时判讲题稿而不是含糊的 both"
     },
     {
       "id": "solution_research",

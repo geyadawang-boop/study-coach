@@ -138,7 +138,17 @@ subjects/calculus/
   render.md            公式渲染约定、禁用写法
   exam-patterns.md     常见题型与分值结构
   misconceptions.md    该学科高频误解
+  verification.md      验证策略（verify: numeric/evidence/any）
+
+subjects/history/
+  syllabus.md          中国古代史 + 近代史默认范围模板
+  glossary.md          制度与运动类术语对照
+  exam-patterns.md     选择题/材料题/论述题考法
+  misconceptions.md    高频误解
+  verification.md      verify: evidence（史料对应、时空定位、因果链、评分点）
 ```
+
+`verification.md` 的 `verify` 决定 `explain_lint.py --subject <学科>` 怎么判验证段：`numeric` 要数值/特殊值，`evidence` 要证据或评分点表，`any` 只要求有数据行。新增学科必须带这个文件，否则 `--subject` 会退出 2。
 
 学科包只能**收窄**，不能**放宽**主循环的硬规则。例如数学学科包可以规定"禁用洛必达"，但不能规定"资料可以不打标签"。
 

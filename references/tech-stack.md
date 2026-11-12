@@ -2,7 +2,7 @@
 
 选型原则：**能用标准库就不装，装了没用上就是负债**。单一使用者没有统计样本，任何"模型"都要先证明比规则更准。
 
-## 本机实测（2026-11-08）
+## 本机实测（2026-11-12）
 
 | 依赖 | 状态 | 用途 | 处置 |
 | --- | --- | --- | --- |
@@ -14,6 +14,7 @@
 | `networkx` | 已装 | 知识点前置 DAG | 知识点 > 60 时启用 |
 | `chromadb` | 已装 | 向量检索 | **默认不启用**，见升级条件 |
 | `fsrs` | 已装 6.3.2（模块名 `fsrs`，非 `py-fsrs`） | FSRS 调度；`scripts/review_schedule.py` 回放 `reviews.jsonl` 算下次到期 | 直接可用；缺失时脚本降级四档阶梯 |
+| `sentence-transformers` | 已装 5.6.0（`torch` 2.13.0+cpu） | `kb_index.py embed` 的真实语义嵌入后端 | 可选；模型缓存 `~/.cache/study-coach-models/bge-small-zh-v1.5` 手动下载，不默认安装 |
 | `mineru` | 未装 | 扫描件/复杂排版解析 | 出现整本扫描教材再装 |
 | `pix2tex` | 未装 | 纯公式图片转 LaTeX | 优先让多模态模型直接读图 |
 
@@ -29,7 +30,7 @@ Windows 提示：脚本读写文件固定 UTF-8；若控制台或管道里的中
 | 拍照/手写 | 多模态模型直接读图，返回结构化 JSON | 少一条 OCR 管线，题号与公式一起识别 | 识别率持续低于 80% 且量大 → 本地 Qwen3-VL |
 | 公式 | `step_check.py` 默认按 Python 语法验算；模型输出 LaTeX 时先转写，或装 `antlr4-python3-runtime` 后用 `--latex` | 解析失败会报原始错误并退出，不静默错 | pix2tex 仅在纯公式截图批处理时考虑 |
 | 索引 | `scripts/kb_index.py`：SQLite FTS5 `tokenize='trigram'` + BM25 | 零依赖、可重建、中文子串可查（BM25 需 ≥3 字；短查询走 vector/hybrid） | 仍不建第二份向量库 |
-| 向量检索 | 字符 bigram 余弦（纯 Python，随索引现算） + RRF 融合，默认 `--mode hybrid` | 不引依赖、不建第二份真相；短查询与同义改写由向量兜底 | 需要真正语义时跑 `kb_index.py embed`，接 `STUDY_COACH_EMBED_CMD` 或 `sentence-transformers`；缓存缺失就退回两路 |
+| 向量检索 | 字符 bigram 余弦（纯 Python，随索引现算） + RRF 融合，默认 `--mode hybrid` | 不引依赖、不建第二份真相；短查询与同义改写由向量兜底 | 需要真正语义时跑 `kb_index.py embed`，接 `STUDY_COACH_EMBED_CMD` 或 `sentence-transformers`；缓存缺失就退回两路。16 条跨学科改写实测：字面 hybrid hit@3 12/16（MRR 0.677），bge-small-zh 语义 14/16（MRR 0.812） |
 | 符号校验 | `scripts/step_check.py`：逐步验等价 + 特殊值反例（SymPy） | 能证伪，不能证真；结论按"未发现矛盾"表述 | 不升级 |
 | 复习调度 | `scripts/review_schedule.py`：FSRS v6 回放 `reviews.jsonl`，字段仍是 `rating/interval_days/due` | 成熟算法，状态可从历史重建，不存黑箱 | 无 `fsrs` 时降级四档阶梯（1/3/7/16，连对 35 天） |
 | 掌握度 | 证据计数四级（L0–L3），样本 <5 只报"证据不足" | 单用户样本估不出概率；规则可解释、可复核 | 不升级为 BKT/深度追踪 |
@@ -76,7 +77,7 @@ Windows 提示：脚本读写文件固定 UTF-8；若控制台或管道里的中
 
 一次只换一层，换之前记录基线，换之后用同一批题对比：
 
-1. **bigram 向量 → 外部 embedding**：连续 10 次检索中 ≥3 次"该找到但没找到"，且确认不是关键词写错；先查 `evals/retrieval.jsonl` 是否退化，再跑 `embed` 用同一批 query 对比 hit@5。
+1. **bigram 向量 → 外部 embedding**：连续 10 次检索中 ≥3 次"该找到但没找到"，且确认不是关键词写错；先查 `evals/retrieval.jsonl` 是否退化，再跑 `embed` 用同一批 query 对比 hit@5。2026-11-12 已用 `BAAI/bge-small-zh-v1.5` 在 16 条跨学科改写上实测：语义 14/16 优于字面 12/16，但模型需本机下载，暂不设为默认；口语化问法占比升高时再切默认。
 2. **FSRS 参数复核**：到期卡积压 > 50，或同一张卡在 7 天内反复遗忘；先查 rating 是否虚高、`step_scores` 是否按最弱一步记，再考虑调参。
 3. **fitz → MinerU**：解析后公式/表格缺失导致题目不可用，占比 > 20%。
 4. **NetworkX 启用**：知识点条目 > 60，或出现"讲第 7 章时反复回头补第 3 章"。

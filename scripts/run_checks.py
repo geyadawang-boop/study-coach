@@ -45,6 +45,8 @@ REQUIRED = [
     "references/research.md",
     "references/capabilities.json",
     "evals/retrieval.jsonl",
+    "evals/retrieval-paraphrase.jsonl",
+    "subjects/history/verification.md",
     "evals/routing.jsonl",
     "scripts/route.py",
     "evals/fixtures/paper-good.md",
@@ -596,11 +598,28 @@ def check_explain_lint(root: Path) -> list[dict]:
                     "error", f"验证段为空未被报告：{data.get('missing')}",
                 ))
 
+    policy_positive = [
+        ("history 学科包接受证据核对表", "evals/fixtures/explain-followup-humanities-good.md",
+         ["--subject", "history"]),
+    ]
+    for label, rel, extra in policy_positive:
+        proc = subprocess.run(
+            [sys.executable, str(script), str(root / rel), "--level", "followup",
+             "--json", *extra],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if proc.returncode != 0:
+            out.append(finding(
+                "error", f"{label}返回 {proc.returncode}（期望 0）：{proc.stdout.strip()}",
+            ))
+
     policy_negative = [
         ("文科稿按数值策略应失败", "evals/fixtures/explain-followup-humanities-good.md",
          ["--verify", "numeric"]),
         ("微积分学科包拒绝证据标题", "evals/fixtures/explain-followup-humanities-good.md",
          ["--subject", "calculus"]),
+        ("历史学科包拒绝数值标题", "evals/fixtures/explain-followup-good.md",
+         ["--subject", "history"]),
     ]
     for label, rel, extra in policy_negative:
         proc = subprocess.run(
@@ -1492,6 +1511,47 @@ def check_retrieval_eval(root: Path) -> list[dict]:
                 out.append(finding(
                     "warn", f"vector hit@5={hits}/{total}，字符 bigram 覆盖偏低"
                 ))
+
+        # 跨学科改写问法：微积分与历史同库，字面 hybrid 的 hit@3 不能低于基线。
+        mixed = Path(tmp) / "mixed"
+        for subject in ("calculus", "history"):
+            target = mixed / subject
+            target.mkdir(parents=True)
+            for source in sorted((root / "subjects" / subject).glob("*.md")):
+                (target / source.name).write_text(
+                    source.read_text(encoding="utf-8", errors="replace"), encoding="utf-8"
+                )
+        mixed_db = Path(tmp) / "mixed.db"
+        proc = subprocess.run(
+            [sys.executable, str(script), "build", str(mixed), "--db", str(mixed_db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if proc.returncode != 0:
+            out.append(finding(
+                "error", f"跨学科语料建索引失败：{proc.stderr.strip() or proc.stdout.strip()}",
+            ))
+        else:
+            run = subprocess.run(
+                [
+                    sys.executable, str(script), "eval", str(mixed_db),
+                    str(root / "evals/retrieval-paraphrase.jsonl"),
+                    "--top", "3", "--mode", "hybrid",
+                ],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+            summary = re.search(r"hit@3=(\d+)/(\d+)", run.stdout)
+            if not summary:
+                out.append(finding(
+                    "error", f"跨学科检索评估失败：{run.stdout.strip() or run.stderr.strip()}"
+                ))
+            else:
+                hits, total = int(summary.group(1)), int(summary.group(2))
+                if total != 16:
+                    out.append(finding("error", f"跨学科改写问法应为 16 条，实际 {total}"))
+                if hits < 12:
+                    out.append(finding(
+                        "error", f"跨学科 hybrid hit@3={hits}/{total}，低于 12/16 基线"
+                    ))
     return out
 
 

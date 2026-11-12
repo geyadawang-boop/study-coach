@@ -272,6 +272,22 @@ python scripts/cheatsheet.py --kb 学习库 --format html --max-formulas 6
 - 改过切块规则或公式归一后，先删 `.index/` 再 `build`，否则未变文件会沿用旧切块（构建输出里的 skipped 即未变文件数）；
 - query 集只增不删，旧题命不中说明切块退化，不是"题目过时"。
 
+跨学科改写集 `evals/retrieval-paraphrase.jsonl` 另存 16 条口语化问法，覆盖 `subjects/calculus` 与 `subjects/history` 两个学科包（11 篇文档、63 个切块）。用真实 `BAAI/bge-small-zh-v1.5`（512 维）复测 top 3：字面 `hybrid` 12/16、MRR 0.677，`semantic` 14/16、MRR 0.812，hybrid 加语义第三路 14/16、MRR 0.781。两条未中分别是「只写答案不写过程」与「二重积分换坐标的因子」。这组数字只说明语义路可用且优于纯字面，语料是学科包文档而非整本教材，不能当教材级检索质量证明。
+
+真实模型评测不进 CI（需下载模型），`run_checks.py` 只锁 12/16 的字面基线。本机复测命令：
+
+```bash
+export STUDY_COACH_EMBED_MODEL=/path/to/bge-small-zh-v1.5
+python scripts/kb_index.py build subjects --db /tmp/mixed.db
+python scripts/kb_index.py embed /tmp/mixed.db
+python scripts/kb_index.py eval /tmp/mixed.db evals/retrieval-paraphrase.jsonl \
+  --top 3 --mode semantic
+python scripts/kb_index.py eval /tmp/mixed.db evals/retrieval-paraphrase.jsonl \
+  --top 3 --mode hybrid
+```
+
+`STUDY_COACH_EMBED_MODEL` 可指向本地目录（推荐，离线可复现），也可写 HuggingFace 仓库名；缓存身份取这个字符串，换路径即视为换模型，旧缓存自动失效并需重建。
+
 ## 导出习题册
 
 `export_book.py` 把卡片与未闭环错题排成「题目区 + 答案区」，默认写 `views/习题册.md`：
