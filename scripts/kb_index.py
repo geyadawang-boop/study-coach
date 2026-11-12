@@ -164,6 +164,28 @@ def _embed_meta(path: Path) -> dict | None:
     return meta if isinstance(meta, dict) else None
 
 
+def _embedding_identity() -> str:
+    """缓存身份：外部命令用声明名或命令哈希，sentence-transformers 用模型名。"""
+    command = os.environ.get(EMBED_CMD_ENV, "").strip()
+    if command:
+        declared = os.environ.get(EMBED_NAME_ENV, "").strip()
+        if declared:
+            return declared
+        digest = hashlib.sha256(command.encode("utf-8")).hexdigest()[:16]
+        return f"external-cmd:{digest}"
+    return os.environ.get(EMBED_MODEL_ENV) or DEFAULT_EMBED_MODEL
+
+
+def chunks_fingerprint(conn) -> str:
+    """对切块 ID、标题与正文做哈希，内容或标题改动都会让旧缓存失效。"""
+    digest = hashlib.sha256()
+    for chunk_id, heading, text in conn.execute(
+        "SELECT id, COALESCE(heading, ''), text FROM chunks ORDER BY id"
+    ):
+        digest.update(f"{chunk_id}\0{heading}\0{text}\0".encode("utf-8"))
+    return digest.hexdigest()
+
+
 def _invoke_embedding(texts: list[str]) -> tuple[list[list[float]], str]:
     """按优先级取嵌入：外部命令 → sentence-transformers；都没有就报错。"""
     command = os.environ.get(EMBED_CMD_ENV, "").strip()
@@ -183,7 +205,6 @@ def _invoke_embedding(texts: list[str]) -> tuple[list[list[float]], str]:
             vectors = json.loads(proc.stdout)
         except json.JSONDecodeError as exc:
             raise RuntimeError(f"嵌入命令输出不是 JSON：{exc}") from exc
-        name = os.environ.get(EMBED_NAME_ENV) or "external-cmd"
     else:
         try:
             from sentence_transformers import SentenceTransformer
@@ -192,8 +213,8 @@ def _invoke_embedding(texts: list[str]) -> tuple[list[list[float]], str]:
                 "没有可用的嵌入后端：设置 STUDY_COACH_EMBED_CMD，"
                 "或 pip install sentence-transformers"
             ) from exc
-        name = os.environ.get(EMBED_MODEL_ENV) or DEFAULT_EMBED_MODEL
-        model = SentenceTransformer(name)
+        model_name = os.environ.get(EMBED_MODEL_ENV) or DEFAULT_EMBED_MODEL
+        model = SentenceTransformer(model_name)
         vectors = model.encode(texts, normalize_embeddings=True).tolist()
 
     if not isinstance(vectors, list) or len(vectors) != len(texts):
@@ -203,7 +224,7 @@ def _invoke_embedding(texts: list[str]) -> tuple[list[list[float]], str]:
         if not isinstance(vector, list) or not vector:
             raise RuntimeError("嵌入返回值必须是向量数组")
         cleaned.append([float(value) for value in vector])
-    return cleaned, name
+    return cleaned, _embedding_identity()
 
 
 def build_embeddings(db: Path, force: bool = False) -> int:
@@ -214,7 +235,7 @@ def build_embeddings(db: Path, force: bool = False) -> int:
         ).fetchall()
         count = len(rows)
         chars = sum(len(text) for _, _, text in rows)
-        current = conn.execute("SELECT COUNT(*), COALESCE(SUM(LENGTH(text)), 0) FROM chunks").fetchone()
+        fingerprint = chunks_fingerprint(conn)
     finally:
         conn.close()
     if not rows:
@@ -222,10 +243,12 @@ def build_embeddings(db: Path, force: bool = False) -> int:
         return 2
 
     path = embed_path(db)
+    identity = _embedding_identity()
     if path.is_file() and not force:
         meta = _embed_meta(path)
-        if meta and (meta.get("count"), meta.get("chars")) == (current[0], current[1]):
-            print(f"embeddings up to date: {path} chunks={count}")
+        if (meta and meta.get("sha256") == fingerprint
+                and meta.get("model") == identity):
+            print(f"embeddings up to date: {path} chunks={count} model={identity}")
             return 0
 
     texts = [f"{heading}\n{text}" if heading else text for _, heading, text in rows]
@@ -237,7 +260,8 @@ def build_embeddings(db: Path, force: bool = False) -> int:
 
     with path.open("w", encoding="utf-8") as fh:
         fh.write(json.dumps(
-            {"model": name, "dim": len(vectors[0]), "count": count, "chars": chars},
+            {"model": name, "sha256": fingerprint, "dim": len(vectors[0]),
+             "count": count, "chars": chars},
             ensure_ascii=False,
         ) + "\n")
         for (chunk_id, _, _), vector in zip(rows, vectors):
@@ -247,18 +271,18 @@ def build_embeddings(db: Path, force: bool = False) -> int:
 
 
 def load_embeddings(db: Path, conn) -> tuple[dict[int, list[float]], dict] | None:
-    """读缓存；条数或总字符数与当前索引不一致就要求重建。"""
+    """读缓存；切块内容或模型身份与当前不一致就要求重建。"""
     path = embed_path(db)
     if not path.is_file():
         return None
     meta = _embed_meta(path)
     if not meta:
         return None
-    count, chars = conn.execute(
-        "SELECT COUNT(*), COALESCE(SUM(LENGTH(text)), 0) FROM chunks"
-    ).fetchone()
-    if (meta.get("count"), meta.get("chars")) != (count, chars):
-        print("嵌入缓存与索引不一致：先跑 kb_index.py embed <db> --force", file=sys.stderr)
+    if meta.get("sha256") != chunks_fingerprint(conn):
+        print("嵌入缓存与索引内容不一致：先跑 kb_index.py embed <db> --force", file=sys.stderr)
+        return None
+    if meta.get("model") != _embedding_identity():
+        print("嵌入模型与缓存不一致：换模型后先跑 kb_index.py embed <db> --force", file=sys.stderr)
         return None
     vectors: dict[int, list[float]] = {}
     with path.open(encoding="utf-8") as fh:

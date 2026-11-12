@@ -308,12 +308,14 @@
       "name": "讲题稿与追问稿结构检查",
       "entry": "scripts/explain_lint.py",
       "reference": "references/lecture-and-drill.md",
-      "inputs": ["Markdown 讲题稿或追问稿", "--level solution|followup|multi|both", "可选 --require-frontmatter"],
+      "inputs": ["Markdown 讲题稿或追问稿", "--level solution|followup|multi|both", "可选 --require-frontmatter", "--subject <学科> 或 --verify numeric|evidence|any"],
       "outputs": ["缺失段落清单", "易错点条数/表格行数/视角数", "PASS/FAIL 与退出码"],
       "failure_modes": [
         "讲题稿缺七段之一 → 退出 1，不算成稿",
-        "易错点少于 3 条或验算无表格/特殊值 → 退出 1",
+        "易错点少于 3 条或验证段不符合学科策略 → 退出 1",
         "追问稿少于两个视角或缺验证表（数值/特殊值，或文科证据与评分点）→ 退出 1",
+        "--subject 指定的学科包不存在或缺 verify 字段 → 退出 2",
+        "验证类型与学科策略不符（如微积分用证据标题）→ 退出 1",
         "多解稿缺常规解法/对比表/验算/来源 → 退出 1",
         "文件不可读 → 退出 2",
         "出现「显然/易得」→ 仅警告，不判失败"

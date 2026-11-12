@@ -1,6 +1,12 @@
+---
+subject: calculus
+verify: numeric
+---
+
 # 微积分验证策略
 
 本文件只约束 calculus 学科包。主循环不写死数学规则，遇到验证与多解都回到这里。
+`explain_lint.py --subject calculus` 会读上面的 `verify: numeric`，要求验证段带数值/特殊值证据。
 
 ## 结论怎么验
 

@@ -13,8 +13,13 @@ write the same fields (`rating/interval_days/due`), so records remain portable.
 Usage:
   python review_schedule.py --kb 学习库
   python review_schedule.py --kb 学习库 --card CARD-0007 --json
-  python review_schedule.py --kb 学习库 --grade CARD-0007:3 --at 2026-11-08
+  python review_schedule.py --kb 学习库 --grade CARD-0007:3 --at 2026-11-08T18:30:00+08:00
   python review_schedule.py --kb 学习库 --grade CARD-0007:3 --record
+
+Time: `--record` without `--at` uses the real current time with offset. A
+date-only value means 09:00 in STUDY_COACH_TZ (IANA name) or the machine zone;
+old date-only reviews replay the same way. Full ISO timestamps keep their own
+offset.
 
 Exit codes: 0 = schedule built; 2 = bad input/arguments; 3 = --engine fsrs
 requested but the fsrs package is missing.
@@ -24,38 +29,56 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
-TZ = timezone(timedelta(hours=8))
+_ZONE = None
 LADDER = {1: 1, 2: 3, 3: 7, 4: 16}
 LADDER_LONG = 35
 REV_ID = re.compile(r"^REV-(\d{4,})$")
 GRADE = re.compile(r"^([^:]+):([1-4])$")
 
 
+def zone():
+    """STUDY_COACH_TZ 优先，其次本机时区；用于日期输入与展示，不覆盖完整时间戳的偏移。"""
+    global _ZONE
+    if _ZONE is None:
+        name = os.environ.get("STUDY_COACH_TZ", "").strip()
+        if name:
+            try:
+                from zoneinfo import ZoneInfo
+                _ZONE = ZoneInfo(name)
+            except Exception:
+                print(f"STUDY_COACH_TZ 不是合法时区：{name}", file=sys.stderr)
+                raise SystemExit(2)
+        else:
+            _ZONE = datetime.now().astimezone().tzinfo or timezone(timedelta(hours=8))
+    return _ZONE
+
+
 def parse_at(value: str | None) -> datetime:
     if not value:
-        return datetime.combine(date.today(), time(9, 0), tzinfo=TZ)
+        return datetime.now().astimezone()
     try:
         if len(value) == 10:
-            return datetime.combine(date.fromisoformat(value), time(9, 0), tzinfo=TZ)
+            return datetime.combine(date.fromisoformat(value), time(9, 0), tzinfo=zone())
         parsed = datetime.fromisoformat(value)
     except ValueError:
         raise ValueError(f"--at 不是合法日期：{value}") from None
-    return parsed.replace(tzinfo=TZ) if parsed.tzinfo is None else parsed.astimezone(TZ)
+    return parsed.replace(tzinfo=zone()) if parsed.tzinfo is None else parsed
 
 
 def review_time(value) -> datetime | None:
     try:
         if len(str(value)) == 10:
-            return datetime.combine(date.fromisoformat(str(value)), time(9, 0), tzinfo=TZ)
+            return datetime.combine(date.fromisoformat(str(value)), time(9, 0), tzinfo=zone())
         parsed = datetime.fromisoformat(str(value))
     except ValueError:
         return None
-    return parsed.replace(tzinfo=TZ) if parsed.tzinfo is None else parsed.astimezone(TZ)
+    return parsed.replace(tzinfo=zone()) if parsed.tzinfo is None else parsed
 
 
 def load(path: Path) -> tuple[list[dict], int]:
@@ -141,7 +164,7 @@ def replay_fsrs(history: list[dict], scheduler, warnings: list[str]) -> dict:
 
 def describe(card, at: datetime) -> dict:
     last = card.last_review
-    due_local = card.due.astimezone(TZ) if card.due else None
+    due_local = card.due.astimezone(zone()) if card.due else None
     interval = 0.0
     if last and card.due:
         interval = (card.due - last).total_seconds() / 86400
@@ -153,7 +176,7 @@ def describe(card, at: datetime) -> dict:
         "step": getattr(card, "step", None),
         "stability": round(card.stability, 4) if getattr(card, "stability", None) else None,
         "difficulty": round(card.difficulty, 4) if getattr(card, "difficulty", None) else None,
-        "last_review": last.astimezone(TZ).isoformat() if last else None,
+        "last_review": last.astimezone(zone()).isoformat() if last else None,
         "due": due_local.isoformat() if due_local else None,
         "due_date": due_local.date().isoformat() if due_local else None,
         "interval_days": round(interval, 2),
@@ -180,7 +203,7 @@ def main() -> int:
     parser.add_argument("--kb", required=True, help="学习库根目录")
     parser.add_argument("--card", action="append", help="只看该卡（可重复）")
     parser.add_argument("--grade", action="append", default=[], help="模拟评分 CARD:1-4（可重复）")
-    parser.add_argument("--at", help="评分/到期基准日，默认今天（YYYY-MM-DD 或 ISO 时间）")
+    parser.add_argument("--at", help="评分/到期基准时间，默认取当前真实时间（YYYY-MM-DD 或 ISO 时间）")
     parser.add_argument("--engine", choices=["auto", "fsrs", "ladder"], default="auto")
     parser.add_argument("--record", action="store_true", help="把 --grade 结果追加到 reviews.jsonl")
     parser.add_argument("--json", action="store_true")

@@ -83,10 +83,10 @@ flowchart LR
 追问固定三层：
 
 ```text
-一句话结论 → 至少两种视角 + 数值验证表 → 记号/定义拆解
+一句话结论 → 至少两种视角 + 按学科包验证 → 记号/定义拆解
 ```
 
-写完跑 `scripts/explain_lint.py`：缺段、易错点少于 3 条、追问少于两个视角、没有数值验证表，都会退出 1。结构不合格不算成稿。
+写完跑 `scripts/explain_lint.py`：缺段、易错点少于 3 条、追问少于两个视角、没有验证表，都会退出 1。验证表按学科策略判定：`--subject calculus` 读学科包的 `verify: numeric`，要求数值/特殊值；文科用 `--verify evidence` 要求证据/评分点表。结构不合格不算成稿。
 
 用户要「更优解 / 一题多解 / 搜一下 B 站」时，先做一轮解法检索（本地库 → 教材 → StackExchange / arXiv → B 站 → 社区），再输出：
 
@@ -94,7 +94,7 @@ flowchart LR
 常规解法（必须排第一） → 多解对比表（解法/关键步骤/适用/耗时/风险/验算）→ 验算 → 来源 → 一句话选择建议
 ```
 
-替代解法最多两种，每种都要能复现、能验算、有失效条件；来源给 URL + 访问日期，没联网就写「未外部检索」。多解稿跑 `explain_lint.py --level multi`，缺常规解法、对比表、验算或来源都会退出 1。协议见 [references/solution-research.md](references/solution-research.md)。
+替代解法最多两种，每种都要能复现、能验算、有失效条件；来源给 URL + 访问日期，没联网就写「未外部检索」。多解稿跑 `explain_lint.py --level multi`（同样支持 `--subject/--verify`），缺常规解法、对比表、验算或来源都会退出 1。协议见 [references/solution-research.md](references/solution-research.md)。
 
 外部检索用自带的零 key 脚本，不依赖宿主是否开放搜索工具：
 
@@ -121,7 +121,7 @@ Brave → Yahoo → Bing 顺序回退，`status=ok` 即停；结果带标题与�
 ### 5. 知识库、检索与报告
 
 - 三平面存储：`notes/` 叙述层、`records/` 记录层、`views/` 可重建派生层。`records/*.jsonl` 以追加为主；卡片 `status`、错题 `count/status`、复习 `due` 这类状态字段允许原地更新，历史仍以 `reviews.jsonl` 回放为准。
-- 混合检索：SQLite FTS5（BM25）+ 字符 bigram 余弦 + RRF，可降级到 `bm25` 或 `vector`。默认两条字面分支，不依赖任何模型；`kb_index.py embed` 会按 `STUDY_COACH_EMBED_CMD` 或已安装的 `sentence-transformers` 生成 `embeddings.jsonl`，之后 `--mode semantic` 和 hybrid 的第三路语义分支才启用。显式 `--mode semantic` 缺后端或缓存时退出 3；hybrid 只在缓存可用时加第三路，否则保持两路并提示重建。
+- 混合检索：SQLite FTS5（BM25）+ 字符 bigram 余弦 + RRF，可降级到 `bm25` 或 `vector`。默认两条字面分支，不依赖任何模型；`kb_index.py embed` 会按 `STUDY_COACH_EMBED_CMD` 或已安装的 `sentence-transformers` 生成 `embeddings.jsonl`，之后 `--mode semantic` 和 hybrid 的第三路语义分支才启用。缓存绑定切块 ID/标题/正文的 SHA-256 和模型身份（外部命令用 `STUDY_COACH_EMBED_NAME` 声明），等长改写、只改标题或同维换模型都会失效重建。显式 `--mode semantic` 缺后端、缓存或身份不符时退出 3；hybrid 只在缓存可用时加第三路，否则保持两路并提示重建。
 - 题型卡片、易错点汇总、学情快照、双链反查、高频困惑点统计。
 - 结构地图：`structure_map.py` 把知识地图按必掌握/高频/了解重排，只画前置依赖，单列未知区域；成环与 `--strict` 门槛可判失败。
 - 一页速查表：`cheatsheet.py` 只收公式+条件、易混对照、识别信号、陷阱清单，输出 A4 黑白打印 HTML；缺易混与陷阱直接判不合格。
@@ -162,9 +162,9 @@ pip install sympy           # 步骤等价与特殊值验算
 仓库带 `package.json` 与零依赖安装器，只做本地 / Release 分发，不发布 npm registry：
 
 ```bash
-npm pack                                    # 产出 study-coach-5.5.0.tgz
-npx ./study-coach-5.5.0.tgz install --dest ~/.trae-cn/skills/study-coach
-npx ./study-coach-5.5.0.tgz doctor --dest ~/.trae-cn/skills/study-coach
+npm pack                                    # 产出 study-coach-5.5.1.tgz
+npx ./study-coach-5.5.1.tgz install --dest ~/.trae-cn/skills/study-coach
+npx ./study-coach-5.5.1.tgz doctor --dest ~/.trae-cn/skills/study-coach
 ```
 
 `install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 35 项验收，所以 Python 3.11+（推荐 3.12 / 3.13）是硬要求，低于 3.11 会直接给出提示并以 2 退出，npm 只负责搬文件。

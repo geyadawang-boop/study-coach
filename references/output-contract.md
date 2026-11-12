@@ -50,7 +50,7 @@
 【一句话】把「为什么」压成一句可复述的话
 ```
 
-结构检查：`scripts/explain_lint.py --level solution|followup`；缺段或深度不足退出 1。
+结构检查：`scripts/explain_lint.py --level solution|followup --subject <学科>`；验证段按学科包的 `verify` 策略判定，缺段或深度不足退出 1。
 
 ## 多解版
 
@@ -67,7 +67,7 @@
 
 替代解法最多两种；每种都要能复现、能验算、有失效条件。检索协议与降级规则见 `references/solution-research.md`。
 
-结构检查：`scripts/explain_lint.py --level multi`；缺常规解法、对比表、验算或来源退出 1。
+结构检查：`scripts/explain_lint.py --level multi --subject <学科>`；缺常规解法、对比表、验证或来源退出 1。
 
 ## 批改版
 

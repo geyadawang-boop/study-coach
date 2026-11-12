@@ -152,10 +152,13 @@
 python scripts/review_schedule.py --kb 学习库
 
 # 问“下次评 3 分会排到哪天”；--record 追加一条 REV 并写回 due
-python scripts/review_schedule.py --kb 学习库 --grade CARD-0007:3 --at 2026-11-08 --record
+python scripts/review_schedule.py --kb 学习库 --grade CARD-0007:3 --record
+
+# 显式时间（可省略，省略时用真实当前时间）
+python scripts/review_schedule.py --kb 学习库 --grade CARD-0007:3 --at 2026-11-08T18:30:00+08:00 --record
 ```
 
-调度器每次从 `records/reviews.jsonl` 按 `ts` 顺序重建状态，不另存黑箱；`--engine ladder` 或未装 `fsrs` 时退回下表，字段完全一致。`--record` 写回时 `ts` 保留完整时间与偏移（如 `2026-11-07T14:20:00+08:00`），同一天多次复习不会合并；旧记录只有日期时按当天 09:00 +08:00 兼容回放。`interval_days` 取整天、`due` 只存日期（视图按天比较）；要精确到分钟看命令输出里的 `due`。旧记录缺 `engine` 按 FSRS 正常回放。
+调度器每次从 `records/reviews.jsonl` 按 `ts` 顺序重建状态，不另存黑箱；`--engine ladder` 或未装 `fsrs` 时退回下表，字段完全一致。`--record` 不传 `--at` 时写当前真实时间；显式传时间则原样保留偏移，同一天多次复习不会合并。`--at` 只给日期时按 `STUDY_COACH_TZ`（IANA 名称，未设则本机时区）的 09:00 解释；旧记录只有日期时也按同样规则兼容回放。`interval_days` 取整天、`due` 只存日期（视图按天比较）；要精确到分钟看命令输出里的 `due`。旧记录缺 `engine` 按 FSRS 正常回放。
 
 四档阶梯（仅作降级与对照）：
 
@@ -205,7 +208,7 @@ python scripts/export_book.py --kb 学习库 --concept 极限 --format html
 
 检索结果按路径回读原文，不把片段当引用。
 
-语义检索不是默认能力：`embed` 优先读 `STUDY_COACH_EMBED_CMD`（stdin 收 JSON 字符串数组、stdout 回 JSON 向量数组），其次用已安装的 `sentence-transformers`，两者都没有就退出 3。缓存 `embeddings.jsonl` 与 `index.db` 同目录，条数或总字符数对不上会要求 `--force` 重建；没有缓存时默认 hybrid 仍是 BM25 + 字符 bigram 两路，行为不变。
+语义检索不是默认能力：`embed` 优先读 `STUDY_COACH_EMBED_CMD`（stdin 收 JSON 字符串数组、stdout 回 JSON 向量数组），其次用已安装的 `sentence-transformers`，两者都没有就退出 3。缓存 `embeddings.jsonl` 与 `index.db` 同目录，绑定切块 ID/标题/正文的 SHA-256 与嵌入模型身份：内容等长改写、只改标题或换模型都会让旧缓存失效，普通 `embed` 自动重算，`--mode semantic` 则明确要求重建；外部命令用 `STUDY_COACH_EMBED_NAME` 声明模型名（不声明则取命令哈希，换命令即换代），`sentence-transformers` 用 `STUDY_COACH_EMBED_MODEL`。没有缓存时默认 hybrid 仍是 BM25 + 字符 bigram 两路，行为不变。
 
 ## 双链反查
 

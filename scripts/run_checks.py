@@ -22,6 +22,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.dont_write_bytecode = True  # 导入 kb_health 时不要在 skill 树里留 __pycache__
@@ -396,6 +397,54 @@ def check_index_roundtrip(root: Path) -> list[dict]:
         )
         if missing.returncode != 3:
             out.append(finding("error", f"缺嵌入缓存时 semantic 未退出 3：{missing.returncode}"))
+
+        # 缓存必须绑定内容哈希：等长改字后普通 embed 要重算，不能报 up to date。
+        env["STUDY_COACH_EMBED_NAME"] = "fake-a"
+        first = subprocess.run(
+            [sys.executable, str(script), "embed", str(db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if first.returncode != 0 or "embedded=" not in first.stdout:
+            out.append(finding("error", f"缓存重建失败：{first.stderr.strip() or first.stdout.strip()}"))
+        (kb / "LEC-001-示例.md").write_text(
+            "# 导数与极限\n\n## 洛必达法则\n\n洛必达法则要求分子分母同时趋于正且导数之比极限存在。\n",
+            encoding="utf-8",
+        )
+        subprocess.run(
+            [sys.executable, str(script), "build", str(kb), "--db", str(db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        updated = subprocess.run(
+            [sys.executable, str(script), "embed", str(db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if updated.returncode != 0 or "embedded=" not in updated.stdout:
+            out.append(finding(
+                "error",
+                f"等长内容修改后普通 embed 未重算：{updated.stdout.strip() or updated.stderr.strip()}",
+            ))
+
+        # 同维换模型也必须失效：身份不一致时 semantic 退出 3，embed 重算后才可用。
+        env["STUDY_COACH_EMBED_NAME"] = "fake-b"
+        switched = subprocess.run(
+            [sys.executable, str(script), "search", str(db), "未定式", "--top", "2",
+             "--mode", "semantic"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if switched.returncode != 3:
+            out.append(finding(
+                "error",
+                f"换嵌入模型后 semantic 未拒绝旧缓存：{switched.returncode} {switched.stdout.strip()}",
+            ))
+        reembed = subprocess.run(
+            [sys.executable, str(script), "embed", str(db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if reembed.returncode != 0 or "model=fake-b" not in reembed.stdout:
+            out.append(finding(
+                "error",
+                f"换模型后普通 embed 未重建：{reembed.stdout.strip() or reembed.stderr.strip()}",
+            ))
     return out
 
 
@@ -426,14 +475,21 @@ def check_explain_lint(root: Path) -> list[dict]:
     out: list[dict] = []
     script = root / "scripts/explain_lint.py"
     cases = [
-        ("讲题稿好样例", "evals/fixtures/explain-solution-good.md", "solution"),
-        ("追问稿好样例", "evals/fixtures/explain-followup-good.md", "followup"),
-        ("文科追问稿好样例", "evals/fixtures/explain-followup-humanities-good.md", "followup"),
-        ("多解稿好样例", "evals/fixtures/explain-multi-good.md", "multi"),
+        ("讲题稿好样例", "evals/fixtures/explain-solution-good.md", "solution", []),
+        ("追问稿好样例", "evals/fixtures/explain-followup-good.md", "followup", []),
+        ("文科追问稿好样例", "evals/fixtures/explain-followup-humanities-good.md",
+         "followup", []),
+        ("文科追问稿证据策略", "evals/fixtures/explain-followup-humanities-good.md",
+         "followup", ["--verify", "evidence"]),
+        ("微积分追问稿数值策略", "evals/fixtures/explain-followup-good.md",
+         "followup", ["--verify", "numeric"]),
+        ("微积分学科包读出 numeric", "evals/fixtures/explain-followup-good.md",
+         "followup", ["--subject", "calculus"]),
+        ("多解稿好样例", "evals/fixtures/explain-multi-good.md", "multi", []),
     ]
-    for label, rel, level in cases:
+    for label, rel, level, extra in cases:
         proc = subprocess.run(
-            [sys.executable, str(script), str(root / rel), "--level", level, "--json"],
+            [sys.executable, str(script), str(root / rel), "--level", level, "--json", *extra],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         if proc.returncode != 0:
@@ -486,6 +542,29 @@ def check_explain_lint(root: Path) -> list[dict]:
             out.append(finding(
                 "error", f"{label}未报告「{needle}」：{data.get('missing')}",
             ))
+
+    policy_negative = [
+        ("文科稿按数值策略应失败", "evals/fixtures/explain-followup-humanities-good.md",
+         ["--verify", "numeric"]),
+        ("微积分学科包拒绝证据标题", "evals/fixtures/explain-followup-humanities-good.md",
+         ["--subject", "calculus"]),
+    ]
+    for label, rel, extra in policy_negative:
+        proc = subprocess.run(
+            [sys.executable, str(script), str(root / rel), "--level", "followup",
+             "--json", *extra],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if proc.returncode != 1:
+            out.append(finding("error", f"{label}返回 {proc.returncode}（期望 1）"))
+
+    unknown = subprocess.run(
+        [sys.executable, str(script), str(root / "evals/fixtures/explain-followup-good.md"),
+         "--level", "followup", "--subject", "no-such-subject"],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if unknown.returncode != 2:
+        out.append(finding("error", f"未知学科包未退出 2：{unknown.returncode}"))
     return out
 
 
@@ -2181,6 +2260,29 @@ def check_review_schedule(root: Path) -> list[dict]:
             lines = [json.loads(line) for line in reviews.read_text(encoding="utf-8").splitlines() if line]
             if lines[-1].get("ts") != "2026-11-08T18:30:00+08:00":
                 out.append(finding("error", f"同日二次复习未保留时间：{lines[-1].get('ts')}"))
+
+        # 不传 --at 时默认用真实当前时间，而不是固定当天 09:00。
+        before = datetime.now().astimezone() - timedelta(minutes=5)
+        proc = subprocess.run(
+            [sys.executable, str(script), "--kb", str(kb), "--engine", "ladder",
+             "--grade", "CARD-0007:3", "--record"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        after = datetime.now().astimezone() + timedelta(minutes=5)
+        if proc.returncode != 0:
+            out.append(finding("error", f"默认时间 --record 失败：{proc.stderr.strip()}"))
+        else:
+            lines = [json.loads(line) for line in reviews.read_text(encoding="utf-8").splitlines() if line]
+            try:
+                stamp = datetime.fromisoformat(str(lines[-1].get("ts")))
+            except ValueError:
+                stamp = None
+            if stamp is None or stamp.tzinfo is None:
+                out.append(finding("error", f"默认复习时间缺偏移：{lines[-1].get('ts')}"))
+            elif not before <= stamp.astimezone() <= after:
+                out.append(finding(
+                    "error", f"默认复习时间不是当前时间：{lines[-1].get('ts')}",
+                ))
 
         proc = subprocess.run(
             [sys.executable, str(script), "--kb", str(kb), "--grade", "CARD-9999:2", "--record"],
