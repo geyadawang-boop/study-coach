@@ -2102,6 +2102,174 @@ def check_chapter_diff(root: Path) -> list[dict]:
     return out
 
 
+def check_book_align(root: Path) -> list[dict]:
+    """两本教材按语义对齐：不同标题的同一知识点要配上，同名小节内容不同不能配。"""
+    out: list[dict] = []
+    index_script = root / "scripts/kb_index.py"
+    align_script = root / "scripts/book_align.py"
+    with tempfile.TemporaryDirectory() as tmp:
+        kb = Path(tmp) / "kb"
+        (kb / "甲书").mkdir(parents=True)
+        (kb / "乙书").mkdir(parents=True)
+        (kb / "甲书" / "第1章.md").write_text(
+            "# 导数\n\n## 洛必达法则\n\n"
+            "洛必达法则处理零比零型未定式，分子分母分别求导后再取极限。\n\n"
+            "## 泰勒展开\n\n泰勒展开用多项式逼近函数，按阶数截断。\n\n"
+            "## 本章小结\n\n本章讨论导数与极限的计算，强调先判型再求导。\n",
+            encoding="utf-8",
+        )
+        (kb / "乙书" / "第1章.md").write_text(
+            "# 极限计算\n\n## 零比零型极限的求法\n\n"
+            "遇到零比零型极限，可对分子分母分别求导，再求极限，这就是洛必达法则。\n\n"
+            "## 夹逼定理\n\n夹逼定理用两侧数列夹住中间数列来求极限。\n\n"
+            "## 本章小结\n\n本章只讨论数列极限的夹逼与单调有界准则。\n",
+            encoding="utf-8",
+        )
+        fake = Path(tmp) / "fake_embed.py"
+        fake.write_text(
+            "import json, sys\n"
+            "texts = json.load(sys.stdin)\n"
+            "def vector(text):\n"
+            "    if '本章小结' in text:\n"
+            "        return [0.0, 1.0, 0.0] if '导数' in text else [0.0, 0.0, 1.0]\n"
+            "    if '洛必达' in text or '零比零' in text:\n"
+            "        return [1.0, 0.0, 0.0]\n"
+            "    if '泰勒' in text:\n"
+            "        return [0.0, 1.0, 0.0]\n"
+            "    if '夹逼' in text:\n"
+            "        return [0.0, 0.0, 1.0]\n"
+            "    return [0.0, 1.0, 0.0]\n"
+            "print(json.dumps([vector(t) for t in texts]))\n",
+            encoding="utf-8",
+        )
+        env = dict(os.environ)
+        env["STUDY_COACH_EMBED_CMD"] = f'"{sys.executable}" "{fake}"'
+        db = Path(tmp) / "main" / "index.db"
+        build = subprocess.run(
+            [sys.executable, str(index_script), "build", str(kb), "--db", str(db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        embed = subprocess.run(
+            [sys.executable, str(index_script), "embed", str(db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if build.returncode != 0 or embed.returncode != 0:
+            out.append(finding(
+                "error",
+                f"book_align 前置索引失败："
+                f"{build.stderr.strip() or embed.stderr.strip() or build.stdout.strip()}",
+            ))
+            return out
+
+        proc = subprocess.run(
+            [sys.executable, str(align_script), str(db),
+             "--main", "甲书", "--other", "乙书", "--json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if proc.returncode != 0:
+            out.append(finding("error", f"book_align 失败：{proc.stderr.strip() or proc.stdout.strip()}"))
+            return out
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            out.append(finding("error", f"book_align JSON 无法解析：{exc}"))
+            return out
+
+        pairs = data.get("pairs") or []
+        if len(pairs) != 1:
+            out.append(finding("error", f"book_align 应只配出 1 对，实际 {len(pairs)}"))
+        else:
+            pair = pairs[0]
+            if "洛必达" not in pair["main"] or "零比零" not in pair["other"]:
+                out.append(finding("error", f"book_align 没把不同标题的同一知识点配上：{pair}"))
+            if pair.get("verdict") != "同义覆盖":
+                out.append(finding("error", f"book_align 判定应为同义覆盖，实际 {pair.get('verdict')}"))
+        if data.get("structural") != {"main": 1, "other": 1}:
+            out.append(finding(
+                "error", f"book_align 应各跳过 1 个结构块，实际 {data.get('structural')}"
+            ))
+        if any("本章小结" in item["main"] and "本章小结" in item["other"] for item in pairs):
+            out.append(finding("error", "book_align 把同名「本章小结」按标题强行配对了"))
+        if not any("泰勒展开" in item for item in data.get("onlyMain") or []):
+            out.append(finding("error", "book_align 漏报仅主教材覆盖的「泰勒展开」"))
+        if not any("夹逼定理" in item for item in data.get("onlyOther") or []):
+            out.append(finding("error", "book_align 漏报仅副教材覆盖的「夹逼定理」"))
+
+        md = subprocess.run(
+            [sys.executable, str(align_script), str(db), "--main", "甲书", "--other", "乙书"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        for needle in ("## 对齐结果", "同义覆盖", "仅 甲书 覆盖", "仅 乙书 覆盖"):
+            if needle not in md.stdout:
+                out.append(finding("error", f"book_align Markdown 缺少 {needle}"))
+
+        # 标题带竖线时表格不能多切一列
+        pipe_kb = Path(tmp) / "pipe"
+        (pipe_kb / "甲书").mkdir(parents=True)
+        (pipe_kb / "乙书").mkdir(parents=True)
+        (pipe_kb / "甲书" / "x.md").write_text(
+            "# 补充\n\n## 判断|判别\n\n先判断型再求导。\n", encoding="utf-8")
+        (pipe_kb / "乙书" / "x.md").write_text(
+            "# 补充\n\n## 另一|标题\n\n另说一件事。\n", encoding="utf-8")
+        pipe_db = Path(tmp) / "pipe" / "pipe.db"
+        subprocess.run(
+            [sys.executable, str(index_script), "build", str(pipe_kb), "--db", str(pipe_db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        subprocess.run(
+            [sys.executable, str(index_script), "embed", str(pipe_db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        pipe = subprocess.run(
+            [sys.executable, str(align_script), str(pipe_db),
+             "--main", "甲书", "--other", "乙书"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if "判断\\|判别" not in pipe.stdout:
+            out.append(finding("error", "book_align 没转义标题里的竖线，表格会多切一列"))
+
+        bad_sim = subprocess.run(
+            [sys.executable, str(align_script), str(db), "--main", "甲书",
+             "--other", "乙书", "--min-sim", "1.5"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if bad_sim.returncode != 2:
+            out.append(finding(
+                "error", f"--min-sim 越界应退出 2，实际 {bad_sim.returncode}"
+            ))
+        overlap = subprocess.run(
+            [sys.executable, str(align_script), str(db), "--main", "甲书",
+             "--other", "甲书/第1章.md"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if overlap.returncode != 2:
+            out.append(finding(
+                "error", f"分书重叠应退出 2，实际 {overlap.returncode}"
+            ))
+
+        dry_db = Path(tmp) / "dry" / "index.db"
+        subprocess.run(
+            [sys.executable, str(index_script), "build", str(kb), "--db", str(dry_db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        dry = subprocess.run(
+            [sys.executable, str(align_script), str(dry_db), "--main", "甲书", "--other", "乙书"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if dry.returncode != 3:
+            out.append(finding(
+                "error", f"缺嵌入缓存应退出 3，实际 {dry.returncode}"
+            ))
+
+        missing = subprocess.run(
+            [sys.executable, str(align_script), str(db), "--main", "甲书", "--other", "丙书"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        if missing.returncode != 2:
+            out.append(finding("error", f"book_align 分书为空应退出 2，实际 {missing.returncode}"))
+    return out
+
+
 def check_mock_paper(root: Path) -> list[dict]:
     out: list[dict] = []
     script = root / "scripts/mock_paper.py"
@@ -2790,6 +2958,7 @@ CHECKS = {
     "weekly_report": lambda root, kb: check_weekly_report(root),
     "slice_questions": lambda root, kb: check_slice_questions(root),
     "chapter_diff": lambda root, kb: check_chapter_diff(root),
+    "book_align": lambda root, kb: check_book_align(root),
     "toc_extract": lambda root, kb: check_toc_extract(root),
     "mock_paper": lambda root, kb: check_mock_paper(root),
     "page_regions": lambda root, kb: check_page_regions(root),

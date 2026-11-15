@@ -202,6 +202,11 @@ python scripts/kb_index.py eval 学习库/.index/index.db evals/retrieval.jsonl 
 python scripts/kb_index.py embed 学习库/.index/index.db
 python scripts/kb_index.py search 学习库/.index/index.db "未定式怎么处理" --mode semantic
 
+# 两本教材讲同一内容：语义对齐，不按章节标题对齐
+# 前提：两本书各占知识库下一个第一级目录（如 学习库/甲书/、学习库/乙书/）
+python scripts/book_align.py 学习库/.index/index.db --main 甲书 --other 乙书 \
+  --out 学习库/views/双教材对照.md
+
 # 按考点导出可打印习题册（题目区 + 答案区）
 python scripts/export_book.py --kb 学习库 --concept 极限 --format html
 ```

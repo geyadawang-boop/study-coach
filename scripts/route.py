@@ -244,6 +244,15 @@ INTENTS = [
         "keys": ["换版", "对比", "退役", "旧版"],
     },
     {
+        "id": "book-align",
+        "entry": "scripts/book_align.py",
+        "phrases": [
+            "两本教材讲同一内容怎么对照", "两本书同一个知识点在哪",
+            "语义对齐两本教材", "两本教材各自覆盖了哪些内容",
+        ],
+        "keys": ["两本教材", "语义对齐", "同一知识点", "各自覆盖"],
+    },
+    {
         "id": "weekly-report",
         "entry": "scripts/weekly_report.py",
         "phrases": [
