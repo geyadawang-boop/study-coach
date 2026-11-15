@@ -2130,6 +2130,8 @@ def check_book_align(root: Path) -> list[dict]:
             "import json, sys\n"
             "texts = json.load(sys.stdin)\n"
             "def vector(text):\n"
+            "    if '同义概念' in text:\n"
+            "        return [1.0, 0.0, 0.0, 0.0]\n"
             "    if '本章小结' in text:\n"
             "        return [0.0, 1.0, 0.0] if '导数' in text else [0.0, 0.0, 1.0]\n"
             "    if '洛必达' in text or '零比零' in text:\n"
@@ -2182,26 +2184,39 @@ def check_book_align(root: Path) -> list[dict]:
             pair = pairs[0]
             if "洛必达" not in pair["main"] or "零比零" not in pair["other"]:
                 out.append(finding("error", f"book_align 没把不同标题的同一知识点配上：{pair}"))
-            if pair.get("verdict") != "高相似候选，需核对原文":
-                out.append(finding("error", f"book_align 判定应为高相似候选，需核对原文，实际 {pair.get('verdict')}"))
+            if pair.get("verdict") != "同义对应":
+                out.append(finding("error", f"book_align 判定应为同义对应，实际 {pair.get('verdict')}"))
+            for key in ("mainChunkId", "mainOrd", "otherChunkId", "otherOrd"):
+                if key not in pair:
+                    out.append(finding("error", f"book_align 配对缺少块标识 {key}"))
+            if "块 " not in pair["main"]:
+                out.append(finding("error", f"book_align 位置没带块号：{pair['main']}"))
         if data.get("structural") != {"main": 1, "other": 1}:
             out.append(finding(
                 "error", f"book_align 应各跳过 1 个结构块，实际 {data.get('structural')}"
             ))
         if any("本章小结" in item["main"] and "本章小结" in item["other"] for item in pairs):
             out.append(finding("error", "book_align 把同名「本章小结」按标题强行配对了"))
-        if not any("泰勒展开" in item for item in data.get("onlyMain") or []):
-            out.append(finding("error", "book_align 漏报主教材未配对的「泰勒展开」"))
-        if not any("夹逼定理" in item for item in data.get("onlyOther") or []):
-            out.append(finding("error", "book_align 漏报副教材未配对的「夹逼定理」"))
+        if not any("泰勒展开" in item["location"] for item in data.get("unmatchedMain") or []):
+            out.append(finding("error", "book_align 漏报未匹配的「泰勒展开」"))
+        if not any("夹逼定理" in item["location"] for item in data.get("unmatchedOther") or []):
+            out.append(finding("error", "book_align 漏报未匹配的「夹逼定理」"))
+        if "onlyMain" in data or "onlyOther" in data or "coverage" in data:
+            out.append(finding("error", "book_align 仍输出「仅 X 覆盖/覆盖率」这类过强结论字段"))
+        if data.get("pairRate", {}).get("main") != 0.5:
+            out.append(finding("error", f"book_align 切块配对率应为 0.5，实际 {data.get('pairRate')}"))
 
         md = subprocess.run(
             [sys.executable, str(align_script), str(db), "--main", "甲书", "--other", "乙书"],
             capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
         )
-        for needle in ("## 对齐结果", "高相似候选，需核对原文", "甲书 未配对块（待复核）", "乙书 未配对块（待复核）"):
+        for needle in ("## 对齐结果", "同义对应", "未匹配块：甲书", "未匹配块：乙书", "切块配对率"):
             if needle not in md.stdout:
                 out.append(finding("error", f"book_align Markdown 缺少 {needle}"))
+        if "覆盖" in md.stdout.replace("内容覆盖率", ""):
+            out.append(finding("error", "book_align Markdown 仍把未匹配说成「覆盖」"))
+        if "不能据此判断另一本书没讲" not in md.stdout:
+            out.append(finding("error", "book_align Markdown 缺少「未匹配不等于没讲」的警示"))
 
         # 标题带竖线时表格不能多切一列
         pipe_kb = Path(tmp) / "pipe"
@@ -2227,6 +2242,96 @@ def check_book_align(root: Path) -> list[dict]:
         )
         if "判断\\|判别" not in pipe.stdout:
             out.append(finding("error", "book_align 没转义标题里的竖线，表格会多切一列"))
+
+        # 四对四同分：不能因为每块只留三个候选就只配出三对
+        tie_kb = Path(tmp) / "tie" / "kb"
+        for book in ("甲书", "乙书"):
+            (tie_kb / book).mkdir(parents=True)
+        (tie_kb / "甲书" / "a.md").write_text(
+            "# 甲\n\n## 甲一\n\n同义概念内容。\n\n## 甲二\n\n同义概念内容。\n\n"
+            "## 甲三\n\n同义概念内容。\n\n## 甲四\n\n同义概念内容。\n",
+            encoding="utf-8",
+        )
+        (tie_kb / "乙书" / "a.md").write_text(
+            "# 乙\n\n## 乙一\n\n同义概念内容。\n\n## 乙二\n\n同义概念内容。\n\n"
+            "## 乙三\n\n同义概念内容。\n\n## 乙四\n\n同义概念内容。\n",
+            encoding="utf-8",
+        )
+        tie_db = Path(tmp) / "tie" / "index.db"
+        subprocess.run(
+            [sys.executable, str(index_script), "build", str(tie_kb), "--db", str(tie_db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        subprocess.run(
+            [sys.executable, str(index_script), "embed", str(tie_db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        tie = subprocess.run(
+            [sys.executable, str(align_script), str(tie_db),
+             "--main", "甲书", "--other", "乙书", "--json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        try:
+            tie_data = json.loads(tie.stdout)
+        except json.JSONDecodeError:
+            tie_data = {}
+        if len(tie_data.get("pairs") or []) != 4:
+            out.append(finding(
+                "error", f"四对四同分应配出 4 对，实际 {len(tie_data.get('pairs') or [])}"
+            ))
+
+        # 同一章节拆成多块时，位置只剩标题就会重名，块号必须能区分。
+        import book_align  # noqa: E402
+        same_heading = [
+            {"id": 1, "ord": 0, "path": "甲书/a.md", "heading": "同一标题", "text": "第一段"},
+            {"id": 2, "ord": 1, "path": "甲书/a.md", "heading": "同一标题", "text": "第二段"},
+        ]
+        if book_align.where(same_heading[0]) == book_align.where(same_heading[1]):
+            out.append(finding(
+                "error", "book_align 同章同标题的两块位置相同，无法区分是哪一段"
+            ))
+
+        # 两段甲对一段乙：未匹配方必须保留候选，不能直接写成「乙书没讲」
+        multi_kb = Path(tmp) / "multi" / "kb"
+        (multi_kb / "甲书").mkdir(parents=True)
+        (multi_kb / "乙书").mkdir(parents=True)
+        (multi_kb / "甲书" / "a.md").write_text(
+            "# 甲\n\n## 甲一\n\n同义概念内容。\n\n## 甲二\n\n同义概念内容。\n",
+            encoding="utf-8",
+        )
+        (multi_kb / "乙书" / "a.md").write_text(
+            "# 乙\n\n## 乙一\n\n同义概念内容。\n", encoding="utf-8",
+        )
+        multi_db = Path(tmp) / "multi" / "index.db"
+        subprocess.run(
+            [sys.executable, str(index_script), "build", str(multi_kb), "--db", str(multi_db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        subprocess.run(
+            [sys.executable, str(index_script), "embed", str(multi_db)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        multi = subprocess.run(
+            [sys.executable, str(align_script), str(multi_db),
+             "--main", "甲书", "--other", "乙书", "--json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+        )
+        try:
+            multi_data = json.loads(multi.stdout)
+        except json.JSONDecodeError:
+            multi_data = {}
+        unmatched = multi_data.get("unmatchedMain") or []
+        if len(multi_data.get("pairs") or []) != 1 or len(unmatched) != 1:
+            out.append(finding(
+                "error", f"两段对一段应配 1 对、留 1 个未匹配，实际 "
+                f"{len(multi_data.get('pairs') or [])}/{len(unmatched)}"
+            ))
+        elif not unmatched[0].get("candidates"):
+            out.append(finding("error", "未匹配块没保留对方书里的相似候选，无法核对是否多对一"))
+        elif "乙一" not in unmatched[0]["candidates"][0]["location"]:
+            out.append(finding(
+                "error", f"未匹配块的候选指向错误：{unmatched[0]['candidates'][0]['location']}"
+            ))
 
         bad_sim = subprocess.run(
             [sys.executable, str(align_script), str(db), "--main", "甲书",
@@ -2267,44 +2372,6 @@ def check_book_align(root: Path) -> list[dict]:
         )
         if missing.returncode != 2:
             out.append(finding("error", f"book_align 分书为空应退出 2，实际 {missing.returncode}"))
-    # Synthetic vectors exercise tie collisions and repeated-heading locators,
-    # without downloading models or reading a real learning library.
-    import book_align
-    def row(chunk_id, book, ordinal):
-        return {"id": chunk_id, "ord": ordinal, "path": f"{book}/chapter.md",
-                "heading": "同一标题", "text": f"段落摘要{chunk_id}", "book": book}
-    import sqlite3
-    with sqlite3.connect(":memory:") as conn:
-        conn.executescript("CREATE TABLE docs(id INTEGER, path TEXT); "
-                           "CREATE TABLE chunks(id INTEGER, doc_id INTEGER, heading TEXT, text TEXT, ord INTEGER); "
-                           "INSERT INTO docs VALUES(1, '甲书/chapter.md'); "
-                           "INSERT INTO chunks VALUES(8, 1, '同一标题', '第二段', 1); "
-                           "INSERT INTO chunks VALUES(7, 1, '同一标题', '第一段', 0);")
-        loaded = book_align.load_chunks(conn)
-    if [(r["id"], r.get("ord")) for r in loaded] != [(7, 0), (8, 1)]:
-        out.append(finding("error", "load_chunks 必须保留数据库 id/ord 并按文件内顺序读取"))
-    left = [row(i, "甲书", i) for i in range(1, 5)]
-    right = [row(i, "乙书", i - 10) for i in range(11, 15)]
-    vectors = {r["id"]: [1.0, 0.0] for r in left + right}
-    pairs = book_align.align(left, right, vectors, 0.68)
-    if len(pairs) != 4:
-        out.append(finding("error", "四对四同向向量应配满，候选不能截断为 top3"))
-    # Two chunks may both describe a single other-book passage. One remains
-    # unpaired under the representative constraint, not because it is absent.
-    pairs = book_align.align(left[:2], right[:1], vectors, 0.68)
-    md, summary = book_align.build(left[:2], right[:1], pairs, "fixture", "甲书", "乙书",
-                                   0.68, {"main": 0, "other": 0})
-    if len(summary["unpairedMain"]) != 1 or summary["pairingRate"] != {"main": 0.5, "other": 1.0}:
-        out.append(finding("error", "多对一场景应报告未配对块与块配对率"))
-    if "未配对不等于对方未讲" not in md or "不是知识覆盖率" not in md or "仅 甲书 覆盖" in md:
-        out.append(finding("error", "未配对语义不能误报知识缺失"))
-    refs = [summary["pairs"][0]["mainChunk"], *summary["unpairedMain"]]
-    if len({r["id"] for r in refs}) != 2 or len({r["ord"] for r in refs}) != 2 or any(not r["preview"] for r in refs):
-        out.append(finding("error", "同标题块必须保留独立 id/ord 与摘要"))
-    if book_align.where(left[0]) == book_align.where(left[1]):
-        out.append(finding("error", "同章同标题块的位置不能相同"))
-    if summary["coverage"] != summary["pairingRate"] or "coverage" not in summary["deprecatedFields"]:
-        out.append(finding("error", "旧 coverage 兼容字段必须明确弃用语义"))
     return out
 
 

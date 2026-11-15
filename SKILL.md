@@ -133,7 +133,7 @@ description: "通用备考与学习教练，适用于任何有教材和考试的
 | 模拟卷组卷蓝图与逐步 rubric | `scripts/mock_paper.py` |
 | 扫描版教材无内嵌目录，抽印刷目录页给模型校对 | `scripts/toc_extract.py` |
 | 教材/考纲换版后的章节 diff 与已退役题 | `scripts/chapter_diff.py` |
-| 两本教材讲同一内容：按切块语义对齐，给出成对位置与各自未配对块（不代表缺失） | `scripts/book_align.py`（先 `kb_index.py build` + `embed`） |
+| 两本教材讲同一内容：按切块语义配对，未匹配块列候选待核对 | `scripts/book_align.py`（先 `kb_index.py build` + `embed`） |
 | 学习周报（事件/退出票/复习/错题/困惑） | `scripts/weekly_report.py` |
 | 批改、归因、写变式题 | `references/error-taxonomy.md` |
 | 维护知识库与存储结构 | `references/knowledge-base.md` |
