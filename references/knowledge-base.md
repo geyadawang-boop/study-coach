@@ -215,6 +215,10 @@ python scripts/export_book.py --kb 学习库 --concept 极限 --format html
 
 语义检索不是默认能力：`embed` 优先读 `STUDY_COACH_EMBED_CMD`（stdin 收 JSON 字符串数组、stdout 回 JSON 向量数组），其次用已安装的 `sentence-transformers`，两者都没有就退出 3。缓存 `embeddings.jsonl` 与 `index.db` 同目录，绑定切块 ID/标题/正文的 SHA-256 与嵌入模型身份：内容等长改写、只改标题或换模型都会让旧缓存失效，普通 `embed` 自动重算，`--mode semantic` 则明确要求重建；读取时校验向量 ID 集合、条数、维度与数值有效性，不完整的缓存按损坏处理，写盘先写临时文件再原子替换。外部命令用 `STUDY_COACH_EMBED_NAME` 声明模型名（不声明则取命令哈希，换命令即换代），`sentence-transformers` 用 `STUDY_COACH_EMBED_MODEL`。没有缓存时默认 hybrid 仍是 BM25 + 字符 bigram 两路，行为不变。
 
+双教材对照使用所有达阈值候选作贪心一对一代表配对，不保证全局最优。未配对不代表另一书没讲，尤其要复核一对多/多对一关系；块配对率不等于知识覆盖率。位置含索引内 `chunk id` 与 `ord`（文件内从 0 开始），并附短摘要供回读；重建索引后编号可能变化。
+
+`--json` 中 `pairs` 保留字符串 `main`/`other`，新增结构化 `mainChunk`/`otherChunk`（`id`、`ord`、`path`、`heading`、`preview`）；`unpairedMain`/`unpairedOther` 使用相同结构。使用 `pairingRate` 读取块配对率。旧 `coverage` 是配对率的弃用别名，`onlyMain`/`onlyOther` 是未配对位置字符串的弃用别名，均不表示知识覆盖或独有内容；`deprecatedFields` 明示兼容语义。
+
 ## 双链反查
 
 `kb_view.py` 扫描 `notes/` 与根目录 Markdown 中的 `[[目标]]`，生成 `views/双链反查.md`：

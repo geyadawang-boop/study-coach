@@ -69,7 +69,7 @@ flowchart LR
 | 多栏 / 跨页：自动提案题号区域，模型复核 bbox 后裁图 | `scripts/page_regions.py --suggest` |
 | 题目 schema、题数、分值、总分、题型分布质检 | `scripts/intake_check.py` |
 | 印刷目录抽取，供模型校对成章节树 | `scripts/toc_extract.py` |
-| 两本教材讲同一内容：语义对齐成对位置，列各自单独覆盖 | `scripts/book_align.py` |
+| 两本教材讲同一内容：语义对齐成对位置，列各自未配对块（不代表缺失） | `scripts/book_align.py` |
 
 质量门不通过就不入库，不把「大概齐」当数据。
 

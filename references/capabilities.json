@@ -132,7 +132,7 @@
       "entry": "scripts/book_align.py",
       "reference": "references/source-layers.md",
       "inputs": ["kb_index.py 已建索引与 embeddings.jsonl", "主/副教材的路径前缀（缺省按知识库第一级目录自动识别两本）"],
-      "outputs": ["一对一语义配对（位置、相似度、同义覆盖/表述不同/低置信）", "各书单独覆盖清单", "覆盖率与 --json 摘要"],
+      "outputs": ["贪心一对一候选配对（chunk id/ord、位置、摘要、相似度与置信分档；不保证全局最优）", "各书未配对块清单（不代表缺失）", "块配对率（非知识覆盖率）与 --json 摘要"],
       "failure_modes": [
         "缺嵌入缓存 → 退出 3，提示先跑 kb_index.py embed",
         "识别到的教材不是恰好两本、指定的前缀没有切块、两本书前缀相同或切块重叠 → 退出 2",
