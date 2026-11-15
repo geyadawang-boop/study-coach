@@ -5,10 +5,13 @@ Chapter titles are not a join key: two books can teach one knowledge point
 under different headings, and identical headings (「本章小结」) often hold
 different content. This script embeds each indexed chunk, compares every
 main-book chunk against every other-book chunk by cosine, and reports
-one-to-one pairs plus what each book covers alone.
+one-to-one pairs plus, for every unmatched chunk, the similar passages it
+could still correspond to. Unmatched means "no exclusive pair", not "the
+other book does not teach it": the same content may be split across several
+chunks, merged into another section, or taught at a different granularity.
 
 The similarity score is a recall signal, not a verdict: pairs are banded as
-同义覆盖 / 表述不同 / 低置信 and the caller still decides whether the two
+同义对应 / 表述不同 / 低置信 and the caller still decides whether the two
 passages teach the same thing.
 
 Usage:
@@ -80,8 +83,8 @@ def load_chunks(conn) -> list[dict]:
     ).fetchall()
     return [
         {"id": int(chunk_id), "path": path, "heading": heading,
-         "text": text, "book": book_of(path)}
-        for chunk_id, path, heading, text, _ord in rows
+         "text": text, "ord": int(ord_), "book": book_of(path)}
+        for chunk_id, path, heading, text, ord_ in rows
     ]
 
 
@@ -131,36 +134,36 @@ def unit_norms(rows: list[dict], vectors: dict[int, list[float]]) -> list[float]
 
 def align(main_rows: list[dict], other_rows: list[dict],
           vectors: dict[int, list[float]], min_sim: float) -> list[dict]:
-    """Greedy one-to-one matching over per-chunk top candidates."""
+    """One-to-one matching; leftovers get further passes so ties don't cap the result."""
     other_norms = unit_norms(other_rows, vectors)
-    candidates: list[tuple[float, int, int]] = []
-    for index, row in enumerate(main_rows):
-        vector = vectors.get(row["id"])
-        if not vector:
-            continue
-        norm = math.sqrt(sum(value * value for value in vector))
-        if not norm:
-            continue
-        scored: list[tuple[float, int]] = []
-        for other_index, other_row in enumerate(other_rows):
-            other_vector = vectors.get(other_row["id"])
-            if not other_vector or len(other_vector) != len(vector):
-                continue
-            if not other_norms[other_index]:
-                continue
-            dot = sum(map(operator.mul, vector, other_vector))
-            score = dot / (norm * other_norms[other_index])
-            if score >= min_sim:
-                scored.append((score, other_index))
-        scored.sort(reverse=True)
-        for score, other_index in scored[:TOP_CANDIDATES]:
-            candidates.append((score, index, other_index))
+    main_norms = unit_norms(main_rows, vectors)
 
-    candidates.sort(key=lambda item: -item[0])
+    def score(index: int, other_index: int) -> float | None:
+        if not main_norms[index] or not other_norms[other_index]:
+            return None
+        vector = vectors[main_rows[index]["id"]]
+        other_vector = vectors[other_rows[other_index]["id"]]
+        if len(vector) != len(other_vector):
+            return None
+        dot = sum(map(operator.mul, vector, other_vector))
+        return dot / (main_norms[index] * other_norms[other_index])
+
     used_main: set[int] = set()
     used_other: set[int] = set()
     matched: list[dict] = []
-    for score, index, other_index in candidates:
+    candidates: list[tuple[float, int, int]] = []
+    for index in range(len(main_rows)):
+        scored = [
+            (value, other_index)
+            for other_index in range(len(other_rows))
+            if (value := score(index, other_index)) is not None and value >= min_sim
+        ]
+        scored.sort(reverse=True)
+        for value, other_index in scored[:TOP_CANDIDATES]:
+            candidates.append((value, index, other_index))
+
+    candidates.sort(key=lambda item: -item[0])
+    for value, index, other_index in candidates:
         if index in used_main or other_index in used_other:
             continue
         used_main.add(index)
@@ -168,23 +171,86 @@ def align(main_rows: list[dict], other_rows: list[dict],
         matched.append({
             "main": main_rows[index],
             "other": other_rows[other_index],
-            "sim": round(score, 4),
-            "verdict": verdict_for(score),
+            "sim": round(value, 4),
+            "verdict": verdict_for(value),
         })
-    matched.sort(key=lambda item: (item["main"]["path"], item["main"]["id"]))
+
+    # 前三个候选被占用后继续补配：同分并列时不能只配出 TOP_CANDIDATES 对。
+    while True:
+        added = 0
+        for index in range(len(main_rows)):
+            if index in used_main:
+                continue
+            best: tuple[float, int] | None = None
+            for other_index in range(len(other_rows)):
+                if other_index in used_other:
+                    continue
+                value = score(index, other_index)
+                if value is None or value < min_sim:
+                    continue
+                if best is None or value > best[0]:
+                    best = (value, other_index)
+            if best is None:
+                continue
+            value, other_index = best
+            used_main.add(index)
+            used_other.add(other_index)
+            matched.append({
+                "main": main_rows[index],
+                "other": other_rows[other_index],
+                "sim": round(value, 4),
+                "verdict": verdict_for(value),
+            })
+            added += 1
+        if not added:
+            break
+
+    matched.sort(key=lambda item: (item["main"]["path"], item["main"]["ord"]))
     return matched
+
+
+def candidates_for(rows: list[dict], pool: list[dict],
+                   vectors: dict[int, list[float]], min_sim: float,
+                   top: int = TOP_CANDIDATES) -> dict[int, list[dict]]:
+    """Similar passages in the other book, even when already used by another pair."""
+    pool_norms = unit_norms(pool, vectors)
+    result: dict[int, list[dict]] = {}
+    for row in rows:
+        vector = vectors.get(row["id"])
+        if not vector:
+            result[row["id"]] = []
+            continue
+        norm = math.sqrt(sum(value * value for value in vector))
+        scored: list[tuple[float, int]] = []
+        for index, candidate in enumerate(pool):
+            other_vector = vectors.get(candidate["id"])
+            if not norm or not other_vector or not pool_norms[index]:
+                continue
+            if len(other_vector) != len(vector):
+                continue
+            value = sum(map(operator.mul, vector, other_vector)) / (norm * pool_norms[index])
+            if value >= min_sim:
+                scored.append((value, index))
+        scored.sort(reverse=True)
+        result[row["id"]] = [
+            {"row": pool[index], "sim": round(value, 4)}
+            for value, index in scored[:top]
+        ]
+    return result
 
 
 def verdict_for(score: float) -> str:
     if score >= STRONG_SIM:
-        return "同义覆盖"
+        return "同义对应"
     if score >= WEAK_SIM:
         return "表述不同，核对是否同一知识点"
     return "低置信，需人工确认"
 
 
 def where(row: dict) -> str:
-    return f"{row['path']} › {row['heading']}" if row["heading"] else row["path"]
+    """位置必须带块号：同一章节拆成多块时，只写标题无法区分。"""
+    base = f"{row['path']} › {row['heading']}" if row["heading"] else row["path"]
+    return f"{base}（块 {row['ord'] + 1}）"
 
 
 def preview(row: dict) -> str:
@@ -199,13 +265,15 @@ def cell(text: str) -> str:
 
 def build(main_rows: list[dict], other_rows: list[dict], matched: list[dict],
           model: str, main: str, other: str, min_sim: float,
-          structural: dict[str, int]) -> tuple[str, dict]:
+          structural: dict[str, int],
+          candidates_main: dict[int, list[dict]],
+          candidates_other: dict[int, list[dict]]) -> tuple[str, dict]:
     paired_main = {item["main"]["id"] for item in matched}
     paired_other = {item["other"]["id"] for item in matched}
-    only_main = [row for row in main_rows if row["id"] not in paired_main]
-    only_other = [row for row in other_rows if row["id"] not in paired_other]
-    coverage_main = len(paired_main) / len(main_rows) if main_rows else 0.0
-    coverage_other = len(paired_other) / len(other_rows) if other_rows else 0.0
+    unmatched_main = [row for row in main_rows if row["id"] not in paired_main]
+    unmatched_other = [row for row in other_rows if row["id"] not in paired_other]
+    rate_main = len(paired_main) / len(main_rows) if main_rows else 0.0
+    rate_other = len(paired_other) / len(other_rows) if other_rows else 0.0
 
     lines = [
         BANNER,
@@ -214,6 +282,7 @@ def build(main_rows: list[dict], other_rows: list[dict], matched: list[dict],
         "",
         f"> 按切块嵌入余弦对齐，不按章节名对齐。嵌入模型：`{model}`；阈值 {min_sim:.2f}。",
         "> 相似度只用于召回候选，最终是否同一知识点仍需人工或模型裁定。",
+        "> 未匹配只表示没拿到独占配对，**不能据此判断另一本书没讲**；先看候选并回读原文。",
         "",
         "## 对齐结果",
         "",
@@ -222,23 +291,37 @@ def build(main_rows: list[dict], other_rows: list[dict], matched: list[dict],
     ]
     for index, item in enumerate(matched, 1):
         lines.append(
-            f"| {index} | {cell(where(item['main']))} | {cell(where(item['other']))} "
+            f"| {index} | {cell(where(item['main']))}<br>{cell(preview(item['main']))} "
+            f"| {cell(where(item['other']))}<br>{cell(preview(item['other']))} "
             f"| {item['sim']:.3f} | {cell(item['verdict'])} |"
         )
     if not matched:
         lines.append("| - | 无达到阈值的配对 | - | - | - |")
 
-    lines += ["", f"## 仅 {cell(main)} 覆盖", "", "| 位置 | 摘要 |", "| --- | --- |"]
-    for row in only_main:
-        lines.append(f"| {cell(where(row))} | {cell(preview(row))} |")
-    if not only_main:
-        lines.append("| - | 无 |")
+    def candidate_text(items: list[dict]) -> str:
+        if not items:
+            return "无达到阈值的候选"
+        return "；".join(f"{where(item['row'])}（{item['sim']:.3f}）" for item in items)
 
-    lines += ["", f"## 仅 {cell(other)} 覆盖", "", "| 位置 | 摘要 |", "| --- | --- |"]
-    for row in only_other:
-        lines.append(f"| {cell(where(row))} | {cell(preview(row))} |")
-    if not only_other:
-        lines.append("| - | 无 |")
+    def unmatched_block(title: str, rows: list[dict], pool_name: str,
+                        candidates: dict[int, list[dict]]) -> list[str]:
+        block = [
+            "", f"## 未匹配块：{cell(title)}（待核对）", "",
+            f"> 这里只是没有拿到独占配对，不等于 {cell(pool_name)} 没讲。先看右列候选，再回读原文。",
+        ]
+        if not rows:
+            block += ["", "无。每块都拿到了独占配对。"]
+            return block
+        block += ["", f"| 位置 | 摘要 | {cell(pool_name)} 里的相似候选 |", "| --- | --- | --- |"]
+        for row in rows:
+            block.append(
+                f"| {cell(where(row))} | {cell(preview(row))} "
+                f"| {cell(candidate_text(candidates.get(row['id'], [])))} |"
+            )
+        return block
+
+    lines += unmatched_block(main, unmatched_main, other, candidates_main)
+    lines += unmatched_block(other, unmatched_other, main, candidates_other)
 
     lines += [
         "",
@@ -247,8 +330,9 @@ def build(main_rows: list[dict], other_rows: list[dict], matched: list[dict],
         f"- 主教材 {len(main_rows)} 块，副教材 {len(other_rows)} 块，一对一配对 {len(matched)} 对。",
         f"- 跳过结构块：{main} {structural['main']} 块、{other} {structural['other']} 块"
         "（本章小结/习题等，不作为知识点对齐）。",
-        f"- 覆盖率：{main} {coverage_main:.0%}，{other} {coverage_other:.0%}。",
-        "- 同一块只进入一对；同一章节名内容不同时不会被强行配对。",
+        f"- 切块配对率：{main} {rate_main:.0%}，{other} {rate_other:.0%}；"
+        "这是配对比例，不是内容覆盖率，也不是缺口比例。",
+        "- 同一块只进入一对；配对不足说明需要回读原文核对，不能直接推出「另一本没讲」。",
     ]
 
     summary = {
@@ -261,16 +345,46 @@ def build(main_rows: list[dict], other_rows: list[dict], matched: list[dict],
         "pairs": [
             {
                 "main": where(item["main"]),
+                "mainChunkId": item["main"]["id"],
+                "mainOrd": item["main"]["ord"],
+                "mainPreview": preview(item["main"]),
                 "other": where(item["other"]),
+                "otherChunkId": item["other"]["id"],
+                "otherOrd": item["other"]["ord"],
+                "otherPreview": preview(item["other"]),
                 "sim": item["sim"],
                 "verdict": item["verdict"],
             }
             for item in matched
         ],
-        "onlyMain": [where(row) for row in only_main],
-        "onlyOther": [where(row) for row in only_other],
+        "unmatchedMain": [
+            {
+                "location": where(row),
+                "chunkId": row["id"],
+                "ord": row["ord"],
+                "preview": preview(row),
+                "candidates": [
+                    {"location": where(item["row"]), "sim": item["sim"]}
+                    for item in candidates_main.get(row["id"], [])
+                ],
+            }
+            for row in unmatched_main
+        ],
+        "unmatchedOther": [
+            {
+                "location": where(row),
+                "chunkId": row["id"],
+                "ord": row["ord"],
+                "preview": preview(row),
+                "candidates": [
+                    {"location": where(item["row"]), "sim": item["sim"]}
+                    for item in candidates_other.get(row["id"], [])
+                ],
+            }
+            for row in unmatched_other
+        ],
         "structural": structural,
-        "coverage": {"main": round(coverage_main, 3), "other": round(coverage_other, 3)},
+        "pairRate": {"main": round(rate_main, 3), "other": round(rate_other, 3)},
     }
     return "\n".join(lines) + "\n", summary
 
@@ -314,9 +428,19 @@ def main() -> int:
     other_rows = [row for row in other_rows if not is_structural(row)]
 
     matched = align(main_rows, other_rows, vectors, args.min_sim)
+    matched_main = {item["main"]["id"] for item in matched}
+    matched_other = {item["other"]["id"] for item in matched}
+    unmatched_main = [row for row in main_rows if row["id"] not in matched_main]
+    unmatched_other = [row for row in other_rows if row["id"] not in matched_other]
+    candidates_main = candidates_for(
+        unmatched_main, other_rows, vectors, args.min_sim)
+    candidates_other = candidates_for(
+        unmatched_other, main_rows, vectors, args.min_sim)
+
     text, summary = build(
         main_rows, other_rows, matched, str(meta.get("model") or "unknown"),
         main_name, other_name, args.min_sim, structural,
+        candidates_main, candidates_other,
     )
 
     if args.out:

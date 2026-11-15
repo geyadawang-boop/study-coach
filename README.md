@@ -69,7 +69,7 @@ flowchart LR
 | 多栏 / 跨页：自动提案题号区域，模型复核 bbox 后裁图 | `scripts/page_regions.py --suggest` |
 | 题目 schema、题数、分值、总分、题型分布质检 | `scripts/intake_check.py` |
 | 印刷目录抽取，供模型校对成章节树 | `scripts/toc_extract.py` |
-| 两本教材讲同一内容：语义对齐成对位置，列各自单独覆盖 | `scripts/book_align.py` |
+| 两本教材讲同一内容：按语义配对成对位置，未匹配块列候选待核对 | `scripts/book_align.py` |
 
 质量门不通过就不入库，不把「大概齐」当数据。
 
@@ -163,9 +163,9 @@ pip install sympy           # 步骤等价与特殊值验算
 仓库带 `package.json` 与零依赖安装器，只做本地 / Release 分发，不发布 npm registry：
 
 ```bash
-npm pack                                    # 产出 study-coach-5.7.0.tgz
-npx ./study-coach-5.7.0.tgz install --dest ~/.trae-cn/skills/study-coach
-npx ./study-coach-5.7.0.tgz doctor --dest ~/.trae-cn/skills/study-coach
+npm pack                                    # 产出 study-coach-5.7.1.tgz
+npx ./study-coach-5.7.1.tgz install --dest ~/.trae-cn/skills/study-coach
+npx ./study-coach-5.7.1.tgz doctor --dest ~/.trae-cn/skills/study-coach
 ```
 
 `install` 只覆盖同名文件，不删除目标目录里的任何内容；目标已有 `SKILL.md` 时要加 `--force`。`doctor` 会调用 Python 跑 37 项验收，所以 Python 3.11+（推荐 3.12 / 3.13）是硬要求，低于 3.11 会直接给出提示并以 2 退出，npm 只负责搬文件。
@@ -207,7 +207,7 @@ Skill 会先收「主教材 / 考纲 / 考试信息」三件套，再按三层�
 | 建索引 | `python scripts/kb_index.py build 学习库 --db 学习库/.index/index.db` | FTS5 索引，可删可重建 |
 | 检索 | `python scripts/kb_index.py search 学习库/.index/index.db "有理化" --top 5` | 命中笔记与切块；`--mode bm25/vector/semantic` |
 | 语义检索（可选） | `python scripts/kb_index.py embed 学习库/.index/index.db` 后加 `--mode semantic` | 需 `STUDY_COACH_EMBED_CMD` 或 `sentence-transformers`；缺后端退出 3 |
-| 双教材语义对照 | `python scripts/book_align.py 学习库/.index/index.db --main 甲书 --other 乙书` | 按切块余弦一对一配对；相似度只用于召回，配对仍需确认 |
+| 双教材语义对照 | `python scripts/book_align.py 学习库/.index/index.db --main 甲书 --other 乙书` | 按切块余弦一对一配对；未匹配块列候选待核对，不等于另一本没讲 |
 | 复习排期 | `python scripts/review_schedule.py --kb 学习库` | 到期卡与间隔 |
 | 导出 Obsidian 卡 | `python scripts/export_cards.py --kb 学习库` | `notes/cards/CARD-xxxx-*.md`，一卡一文件 |
 | 结构地图 | `python scripts/structure_map.py --kb 学习库` | `views/结构地图.md`，三档优先级 + 依赖 + 未知区域 |
