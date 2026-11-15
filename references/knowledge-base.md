@@ -215,6 +215,10 @@ python scripts/export_book.py --kb 学习库 --concept 极限 --format html
 
 语义检索不是默认能力：`embed` 优先读 `STUDY_COACH_EMBED_CMD`（stdin 收 JSON 字符串数组、stdout 回 JSON 向量数组），其次用已安装的 `sentence-transformers`，两者都没有就退出 3。缓存 `embeddings.jsonl` 与 `index.db` 同目录，绑定切块 ID/标题/正文的 SHA-256 与嵌入模型身份：内容等长改写、只改标题或换模型都会让旧缓存失效，普通 `embed` 自动重算，`--mode semantic` 则明确要求重建；读取时校验向量 ID 集合、条数、维度与数值有效性，不完整的缓存按损坏处理，写盘先写临时文件再原子替换。外部命令用 `STUDY_COACH_EMBED_NAME` 声明模型名（不声明则取命令哈希，换命令即换代），`sentence-transformers` 用 `STUDY_COACH_EMBED_MODEL`。没有缓存时默认 hybrid 仍是 BM25 + 字符 bigram 两路，行为不变。
 
+双教材对照使用达阈值候选作贪心一对一代表配对，不保证全局最优或最大配对数。未匹配不代表另一书没讲，尤其要复核一对多/多对一关系；切块配对率不等于知识覆盖率。位置含块号与短摘要，重建索引后 chunk id 可能变化，引用前按路径与摘要回读原文。
+
+`--json` 中每条 `pairs` 带 `main`/`other` 位置字符串与 `mainChunkId`/`mainOrd`/`mainPreview`、`otherChunkId`/`otherOrd`/`otherPreview`；`unmatchedMain`/`unmatchedOther` 带 `location`、`chunkId`、`ord`、`preview` 和对方书里的 `candidates`（`location`、`sim`）；`pairRate` 是双向切块配对率。不再输出 `coverage`、`onlyMain`、`onlyOther` 这类容易被读成知识缺口的字段。
+
 ## 双链反查
 
 `kb_view.py` 扫描 `notes/` 与根目录 Markdown 中的 `[[目标]]`，生成 `views/双链反查.md`：

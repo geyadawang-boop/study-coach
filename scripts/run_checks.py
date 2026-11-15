@@ -2280,6 +2280,17 @@ def check_book_align(root: Path) -> list[dict]:
                 "error", f"四对四同分应配出 4 对，实际 {len(tie_data.get('pairs') or [])}"
             ))
 
+        # 同一章节拆成多块时，位置只剩标题就会重名，块号必须能区分。
+        import book_align  # noqa: E402
+        same_heading = [
+            {"id": 1, "ord": 0, "path": "甲书/a.md", "heading": "同一标题", "text": "第一段"},
+            {"id": 2, "ord": 1, "path": "甲书/a.md", "heading": "同一标题", "text": "第二段"},
+        ]
+        if book_align.where(same_heading[0]) == book_align.where(same_heading[1]):
+            out.append(finding(
+                "error", "book_align 同章同标题的两块位置相同，无法区分是哪一段"
+            ))
+
         # 两段甲对一段乙：未匹配方必须保留候选，不能直接写成「乙书没讲」
         multi_kb = Path(tmp) / "multi" / "kb"
         (multi_kb / "甲书").mkdir(parents=True)
